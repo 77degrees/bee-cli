@@ -397,31 +397,48 @@ button.danger:hover{background:var(--red);color:var(--bg)}
   </div>
   <div class="page" id="page-settings">
     <h1>Settings</h1>
-    <p class="subtitle">Configure your AI provider and view all settings</p>
+    <p class="subtitle">Bee account, AI keys, and configuration</p>
 
-    <div class="card" style="margin-bottom:24px" id="ai-setup-card">
-      <h3 style="margin-bottom:4px">AI Provider</h3>
-      <p style="font-size:.82rem;color:var(--text-sec);margin-bottom:16px">Required for speaker identification and inference features.</p>
-      <div style="display:flex;gap:12px;margin-bottom:16px">
-        <button id="ai-pick-openai" class="ghost" style="flex:1;padding:14px;text-align:center">
-          <div style="font-weight:600;color:var(--text)">OpenAI</div>
-          <div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">GPT-4o (default)</div>
-        </button>
-        <button id="ai-pick-anthropic" class="ghost" style="flex:1;padding:14px;text-align:center">
-          <div style="font-weight:600;color:var(--text)">Anthropic</div>
-          <div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">Claude Sonnet (default)</div>
-        </button>
+    <div class="card" style="margin-bottom:20px">
+      <h3 style="margin-bottom:12px">Bee Connection</h3>
+      <div id="conn-status" style="font-size:.88rem;color:var(--text-sec)">Checking...</div>
+      <div id="conn-actions" style="margin-top:12px;display:none">
+        <button id="conn-login-btn" style="display:none">Log In</button>
+        <button id="conn-logout-btn" class="danger" style="display:none;padding:6px 16px;font-size:.82rem">Log Out</button>
       </div>
-      <div id="ai-key-section" style="display:none">
-        <div style="font-size:.82rem;color:var(--text-sec);margin-bottom:8px" id="ai-key-label">API Key</div>
-        <div class="input-row">
-          <input type="password" id="ai-key-input" placeholder="Paste your API key here...">
-          <button id="ai-key-save">Save</button>
+    </div>
+
+    <div class="card" style="margin-bottom:20px">
+      <h3 style="margin-bottom:4px">OpenAI</h3>
+      <p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">Used for speaker ID &amp; inference. Get a key at <span style="color:var(--amber)">platform.openai.com/api-keys</span></p>
+      <div class="input-row">
+        <input type="password" id="openai-key-input" placeholder="sk-...">
+        <button id="openai-key-save">Save</button>
+      </div>
+      <div id="openai-key-status" style="font-size:.82rem;margin-top:4px"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px">
+      <h3 style="margin-bottom:4px">Anthropic</h3>
+      <p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">Alternative AI provider. Get a key at <span style="color:var(--amber)">console.anthropic.com/settings/keys</span></p>
+      <div class="input-row">
+        <input type="password" id="anthropic-key-input" placeholder="sk-ant-...">
+        <button id="anthropic-key-save">Save</button>
+      </div>
+      <div id="anthropic-key-status" style="font-size:.82rem;margin-top:4px"></div>
+    </div>
+
+    <div id="ai-active-provider" class="card" style="margin-bottom:20px;display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <span style="font-size:.82rem;color:var(--text-muted)">Active AI provider:</span>
+          <span id="ai-active-name" style="font-weight:600;color:var(--amber);margin-left:6px"></span>
         </div>
-        <div id="ai-key-hint" style="font-size:.75rem;color:var(--text-muted);margin-top:4px"></div>
-        <div id="ai-key-status" style="font-size:.82rem;margin-top:8px;display:none"></div>
+        <div style="display:flex;gap:8px">
+          <button id="ai-switch-openai" class="ghost" style="padding:4px 12px;font-size:.78rem">Use OpenAI</button>
+          <button id="ai-switch-anthropic" class="ghost" style="padding:4px 12px;font-size:.78rem">Use Anthropic</button>
+        </div>
       </div>
-      <div id="ai-current" style="margin-top:12px;font-size:.82rem;color:var(--text-muted)"></div>
     </div>
 
     <h3>All Configuration</h3>
@@ -780,7 +797,11 @@ async function loadMail() {
 
 // --- Settings ---
 async function loadSettings() {
-  updateAiStatus();
+  loadConnectionStatus();
+  refreshAiProvider();
+  loadSettingsTable();
+}
+async function loadSettingsTable() {
   var body = document.getElementById('config-body');
   setHtml(body, '<tr><td colspan="3"><div class="loading">Loading</div></td></tr>');
   try {
@@ -819,74 +840,109 @@ window.deleteConfig = async function(key) {
   } catch(e) { alert('Error: ' + e.message); }
 };
 
-// --- AI Provider Setup ---
-var selectedProvider = null;
-var aiProviders = {
-  openai: { keyConfig: 'openai_api_key', label: 'OpenAI API Key', hint: 'Get yours at platform.openai.com/api-keys', placeholder: 'sk-...' },
-  anthropic: { keyConfig: 'anthropic_api_key', label: 'Anthropic API Key', hint: 'Get yours at console.anthropic.com/settings/keys', placeholder: 'sk-ant-...' }
-};
-
-function selectProvider(name) {
-  selectedProvider = name;
-  var section = document.getElementById('ai-key-section');
-  var info = aiProviders[name];
-  section.style.display = '';
-  setText(document.getElementById('ai-key-label'), info.label);
-  setText(document.getElementById('ai-key-hint'), info.hint);
-  document.getElementById('ai-key-input').placeholder = info.placeholder;
-  document.getElementById('ai-key-input').value = '';
-  document.getElementById('ai-key-status').style.display = 'none';
-  document.getElementById('ai-pick-openai').style.borderColor = name === 'openai' ? 'var(--amber)' : '';
-  document.getElementById('ai-pick-openai').style.background = name === 'openai' ? 'var(--amber-glow)' : '';
-  document.getElementById('ai-pick-anthropic').style.borderColor = name === 'anthropic' ? 'var(--amber)' : '';
-  document.getElementById('ai-pick-anthropic').style.background = name === 'anthropic' ? 'var(--amber-glow)' : '';
+// --- Connection Status ---
+async function loadConnectionStatus() {
+  var statusDiv = document.getElementById('conn-status');
+  var actionsDiv = document.getElementById('conn-actions');
+  var loginBtn = document.getElementById('conn-login-btn');
+  var logoutBtn = document.getElementById('conn-logout-btn');
+  try {
+    var data = await (await fetch('/api/auth/status')).json();
+    actionsDiv.style.display = '';
+    if (data.authenticated) {
+      var name = [data.user.first_name, data.user.last_name].filter(Boolean).join(' ');
+      setHtml(statusDiv, '<span style="color:var(--green)">&#10003; Connected</span> as <strong>' + esc(name) + '</strong>');
+      loginBtn.style.display = 'none';
+      logoutBtn.style.display = '';
+    } else {
+      setHtml(statusDiv, '<span style="color:var(--red)">&#10007; Not connected</span>');
+      loginBtn.style.display = '';
+      logoutBtn.style.display = 'none';
+    }
+  } catch {
+    setText(statusDiv, 'Unable to check status');
+  }
 }
 
-document.getElementById('ai-pick-openai').addEventListener('click', function() { selectProvider('openai'); });
-document.getElementById('ai-pick-anthropic').addEventListener('click', function() { selectProvider('anthropic'); });
+document.getElementById('conn-login-btn').addEventListener('click', function() {
+  showLogin();
+});
 
-document.getElementById('ai-key-save').addEventListener('click', async function() {
-  if (!selectedProvider) return;
-  var key = document.getElementById('ai-key-input').value.trim();
+document.getElementById('conn-logout-btn').addEventListener('click', async function() {
+  if (!confirm('Log out of Bee? You will need to re-pair from your phone to log back in.')) return;
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    showLogin();
+    loadConnectionStatus();
+  } catch {}
+});
+
+// --- AI Key Saving ---
+async function saveAiKey(provider, configKey, inputId, statusId) {
+  var key = document.getElementById(inputId).value.trim();
   if (!key) return;
-  var statusDiv = document.getElementById('ai-key-status');
-  statusDiv.style.display = '';
+  var statusDiv = document.getElementById(statusId);
   statusDiv.style.color = 'var(--text-muted)';
   setText(statusDiv, 'Saving...');
   try {
-    await apiLocal('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key:'ai_provider', value:selectedProvider}) });
-    await apiLocal('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key:aiProviders[selectedProvider].keyConfig, value:key}) });
+    await apiLocal('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key: configKey, value: key}) });
+    await apiLocal('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key: 'ai_provider', value: provider}) });
     statusDiv.style.color = 'var(--green)';
-    setText(statusDiv, 'Saved! AI provider set to ' + selectedProvider + '.');
-    document.getElementById('ai-key-input').value = '';
-    loadSettings();
-    updateAiStatus();
+    setText(statusDiv, 'Saved! Now using ' + provider + '.');
+    document.getElementById(inputId).value = '';
+    refreshAiProvider();
+    loadSettingsTable();
   } catch(e) {
     statusDiv.style.color = 'var(--red)';
     setText(statusDiv, 'Error: ' + e.message);
   }
+}
+
+document.getElementById('openai-key-save').addEventListener('click', function() {
+  saveAiKey('openai', 'openai_api_key', 'openai-key-input', 'openai-key-status');
+});
+document.getElementById('anthropic-key-save').addEventListener('click', function() {
+  saveAiKey('anthropic', 'anthropic_api_key', 'anthropic-key-input', 'anthropic-key-status');
 });
 
-async function updateAiStatus() {
-  var div = document.getElementById('ai-current');
+async function switchProvider(name) {
+  try {
+    await apiLocal('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key:'ai_provider', value:name}) });
+    refreshAiProvider();
+    loadSettingsTable();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+document.getElementById('ai-switch-openai').addEventListener('click', function() { switchProvider('openai'); });
+document.getElementById('ai-switch-anthropic').addEventListener('click', function() { switchProvider('anthropic'); });
+
+async function refreshAiProvider() {
+  var bar = document.getElementById('ai-active-provider');
+  var nameSpan = document.getElementById('ai-active-name');
   try {
     var entries = await apiLocal('/config');
     var provider = null;
-    var hasKey = false;
+    var hasOpenai = false;
+    var hasAnthropic = false;
     for (var i = 0; i < entries.length; i++) {
       if (entries[i].key === 'ai_provider') provider = entries[i].value;
-      if (entries[i].key === 'openai_api_key' || entries[i].key === 'anthropic_api_key') hasKey = true;
+      if (entries[i].key === 'openai_api_key') hasOpenai = true;
+      if (entries[i].key === 'anthropic_api_key') hasAnthropic = true;
     }
-    if (provider && hasKey) {
-      setHtml(div, 'Current: <span style="color:var(--green)">' + esc(provider) + ' (configured)</span>');
-    } else if (provider) {
-      setHtml(div, 'Current: <span style="color:var(--amber)">' + esc(provider) + ' (missing API key)</span>');
+    if (provider) {
+      bar.style.display = '';
+      setText(nameSpan, provider);
+      document.getElementById('ai-switch-openai').style.display = hasOpenai && provider !== 'openai' ? '' : 'none';
+      document.getElementById('ai-switch-anthropic').style.display = hasAnthropic && provider !== 'anthropic' ? '' : 'none';
     } else {
-      setText(div, 'No AI provider configured yet.');
+      bar.style.display = 'none';
     }
-  } catch {
-    setText(div, '');
-  }
+    // Show status on key cards
+    var oStat = document.getElementById('openai-key-status');
+    var aStat = document.getElementById('anthropic-key-status');
+    if (hasOpenai && !oStat.textContent) { oStat.style.color = 'var(--green)'; setText(oStat, provider === 'openai' ? 'Active' : 'Key saved'); }
+    if (hasAnthropic && !aStat.textContent) { aStat.style.color = 'var(--green)'; setText(aStat, provider === 'anthropic' ? 'Active' : 'Key saved'); }
+  } catch {}
 }
 
 // --- Auth ---

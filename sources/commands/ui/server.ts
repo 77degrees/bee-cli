@@ -1,5 +1,5 @@
 import type { CommandContext } from "@/commands/types";
-import { loadToken, saveToken } from "@/secureStore";
+import { loadToken, saveToken, clearToken } from "@/secureStore";
 import { fetchClientMe } from "@/client/clientMe";
 import { requestAppPairing } from "@/commands/auth/appPairingRequest";
 import {
@@ -215,6 +215,13 @@ export async function startServer(
       } catch {
         return json({ error: "Invalid token" }, 401);
       }
+    }
+
+    // Logout
+    if (path === "/logout" && req.method === "POST") {
+      await clearToken(context.env);
+      currentToken = null;
+      return json({ ok: true });
     }
 
     return json({ error: "Not found" }, 404);
