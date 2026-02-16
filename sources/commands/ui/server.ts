@@ -19,9 +19,27 @@ import {
   deleteProfile,
   getProfileByName,
 } from "@/db/speakerRepo";
-import { getIntegrationsByType } from "@/integrations/db";
-import { createCalendarProviderFromConfig } from "@/integrations/providers/registry";
-import { createMailProviderFromConfig } from "@/integrations/providers/registry";
+import {
+  getIntegrationsByType,
+  listIntegrations,
+  getIntegration,
+  createIntegration,
+  deleteIntegration,
+} from "@/integrations/db";
+import {
+  createCalendarProviderFromConfig,
+  createMailProviderFromConfig,
+} from "@/integrations/providers/registry";
+import { saveCredential, deleteCredential } from "@/integrations/credentialStore";
+import { getProviderDefaults } from "@/integrations/providers/defaults";
+import {
+  listAllInferences,
+  getInferencesForConversation,
+  upsertInference,
+  clearInferencesForConversation,
+} from "@/db/inferenceRepo";
+import { resolveAiProvider } from "@/ai/provider";
+import { fillTranscriptGaps, isUnclearUtterance } from "@/ai/gapFiller";
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -86,6 +104,17 @@ export async function startServer(
             return json({ error: "Not logged in" }, 401);
           }
           return await proxyBeeApi(context, currentToken, url, req);
+        }
+
+        // --- Infer endpoint (needs Bee API + AI provider) ---
+        if (
+          url.pathname.match(/^\/api\/local\/infer\/\d/) &&
+          req.method === "POST"
+        ) {
+          if (!currentToken) {
+            return json({ error: "Not logged in" }, 401);
+          }
+          return await handleInferRun(url);
         }
 
         // --- Local DB endpoints ---
@@ -227,6 +256,91 @@ export async function startServer(
     return json({ error: "Not found" }, 404);
   }
 
+  async function handleInferRun(url: URL): Promise<Response> {
+    const idStr = url.pathname.slice("/api/local/infer/".length);
+    const conversationId = Number.parseInt(idStr, 10);
+    if (!Number.isFinite(conversationId) || conversationId <= 0) {
+      return json({ error: "Invalid conversation ID" }, 400);
+    }
+
+    const provider = resolveAiProvider();
+    if (!provider) {
+      return json(
+        {
+          error:
+            "No AI provider configured. Add an OpenAI or Anthropic key in Settings first.",
+        },
+        400
+      );
+    }
+
+    const headers = new Headers();
+    headers.set("Authorization", `Bearer ${currentToken}`);
+    const response = await context.client.fetch(
+      `/v1/conversations/${conversationId}`,
+      { method: "GET", headers }
+    );
+    if (!response.ok) {
+      return json(
+        { error: "Failed to fetch conversation" },
+        response.status
+      );
+    }
+    const data = (await response.json()) as unknown;
+    const utterances = extractUtterancesFromData(data);
+    if (utterances.length === 0) {
+      return json({ error: "No utterances found in this conversation" }, 400);
+    }
+
+    const unclear = utterances.filter((u) => isUnclearUtterance(u.text));
+    if (unclear.length === 0) {
+      return json({
+        conversation_id: conversationId,
+        inferences: [],
+        total_utterances: utterances.length,
+        unclear_count: 0,
+      });
+    }
+
+    const contextText = utterances
+      .map((u) => `[${u.speaker}]: ${u.text}`)
+      .join("\n");
+
+    const result = await fillTranscriptGaps(
+      provider,
+      contextText,
+      unclear.map((u) => ({ id: u.id, speaker: u.speaker, text: u.text }))
+    );
+
+    const db = getDatabase();
+    for (const r of result.results) {
+      if (r.confidence > 0.3) {
+        const original = unclear.find((u) => u.id === r.utterance_id);
+        if (original) {
+          upsertInference(
+            db,
+            conversationId,
+            r.utterance_id,
+            original.text,
+            r.inferred_text,
+            r.confidence,
+            result.provider,
+            result.model
+          );
+        }
+      }
+    }
+
+    return json({
+      conversation_id: conversationId,
+      inferences: result.results,
+      total_utterances: utterances.length,
+      unclear_count: unclear.length,
+      model: result.model,
+      provider_name: result.provider,
+    });
+  }
+
   await new Promise(() => {});
 }
 
@@ -313,6 +427,103 @@ async function handleLocal(url: URL, req: Request): Promise<Response> {
     return await handleMailRecent(url);
   }
 
+  // --- Integrations CRUD ---
+  if (path === "/integrations" && req.method === "GET") {
+    const db = tryOpenDatabase();
+    if (!db) return json([]);
+    return json(listIntegrations(db));
+  }
+  if (path === "/integrations" && req.method === "POST") {
+    const db = getDatabase();
+    const body = (await req.json()) as {
+      name: string;
+      type: "calendar" | "mail";
+      provider: "icloud" | "google" | "outlook" | "generic";
+      host?: string;
+      port?: number;
+      username?: string;
+      password?: string;
+    };
+    if (!body.name || !body.type || !body.provider) {
+      return json({ error: "name, type, and provider are required" }, 400);
+    }
+    const defaults = getProviderDefaults(body.provider);
+    const host =
+      body.host ||
+      (body.type === "calendar"
+        ? defaults.calendarHost
+        : defaults.imapHost) ||
+      undefined;
+    const port =
+      body.port ||
+      (body.type === "mail" ? defaults.imapPort : undefined) ||
+      undefined;
+    createIntegration(db, {
+      name: body.name,
+      type: body.type,
+      provider: body.provider,
+      host,
+      port,
+      username: body.username,
+    });
+    if (body.password) {
+      saveCredential(body.name, { password: body.password });
+    }
+    return json({ ok: true });
+  }
+  if (
+    path.match(/^\/integrations\/[^/]+\/test$/) &&
+    req.method === "POST"
+  ) {
+    const name = decodeURIComponent(
+      path.slice("/integrations/".length, -"/test".length)
+    );
+    const db = tryOpenDatabase();
+    if (!db) return json({ error: "Database unavailable" }, 500);
+    const config = getIntegration(db, name);
+    if (!config) return json({ error: "Integration not found" }, 404);
+    if (config.type === "calendar") {
+      const provider = await createCalendarProviderFromConfig(config);
+      const calendars = await provider.listCalendars();
+      return json({ ok: true, type: "calendar", calendars });
+    } else {
+      const provider = createMailProviderFromConfig(config);
+      const messages = await provider.recent(3);
+      await provider.disconnect();
+      return json({ ok: true, type: "mail", messages });
+    }
+  }
+  if (path.startsWith("/integrations/") && req.method === "DELETE") {
+    const name = decodeURIComponent(path.slice("/integrations/".length));
+    const db = getDatabase();
+    deleteIntegration(db, name);
+    deleteCredential(name);
+    return json({ ok: true });
+  }
+
+  // --- Inferences (read/clear) ---
+  if (path === "/inferences" && req.method === "GET") {
+    const db = tryOpenDatabase();
+    if (!db) return json([]);
+    const convoParam = url.searchParams.get("conversation");
+    const limitParam = url.searchParams.get("limit");
+    const limit = limitParam ? Number.parseInt(limitParam, 10) : 50;
+    if (convoParam) {
+      const convoId = Number.parseInt(convoParam, 10);
+      return json(getInferencesForConversation(db, convoId));
+    }
+    return json(listAllInferences(db, limit));
+  }
+  if (path.match(/^\/inferences\/\d+$/) && req.method === "DELETE") {
+    const convoId = Number.parseInt(
+      path.slice("/inferences/".length),
+      10
+    );
+    const db = getDatabase();
+    clearInferencesForConversation(db, convoId);
+    return json({ ok: true });
+  }
+
   return json({ error: "Not found" }, 404);
 }
 
@@ -371,6 +582,37 @@ async function handleMailRecent(url: URL): Promise<Response> {
     (b.date ?? "").localeCompare(a.date ?? "")
   );
   return Response.json(messages.slice(0, limit), { headers: CORS });
+}
+
+type InferUtterance = { id: number; speaker: string; text: string };
+
+function extractUtterancesFromData(data: unknown): InferUtterance[] {
+  if (!data || typeof data !== "object") return [];
+  const payload = data as {
+    conversation?: {
+      transcriptions?: Array<{
+        realtime?: boolean;
+        utterances?: Array<{
+          id?: number;
+          speaker?: string;
+          text?: string;
+        }>;
+      }>;
+    };
+  };
+  const transcriptions = payload.conversation?.transcriptions;
+  if (!transcriptions || transcriptions.length === 0) return [];
+
+  const nonRealtime = transcriptions.find((t) => !t.realtime);
+  const transcription = nonRealtime ?? transcriptions[0];
+  if (!transcription?.utterances) return [];
+
+  return transcription.utterances.filter(
+    (u): u is { id: number; speaker: string; text: string } =>
+      typeof u.id === "number" &&
+      typeof u.speaker === "string" &&
+      typeof u.text === "string"
+  );
 }
 
 function startOfDay(date: Date): Date {

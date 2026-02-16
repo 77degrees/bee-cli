@@ -146,6 +146,31 @@ button.danger:hover{background:var(--red);color:var(--bg)}
   padding:12px 16px;font-family:var(--font-mono);font-size:.82rem;color:var(--amber-light);
   line-height:1.8;margin:10px 0 12px;overflow-x:auto;white-space:pre}
 
+.integration-list{margin-bottom:16px}
+.integration-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border-subtle);font-size:.85rem}
+.integration-row:last-child{border-bottom:none}
+.integration-name{font-weight:600;color:var(--text)}
+.integration-meta{font-family:var(--font-mono);font-size:.75rem;color:var(--text-muted);margin-left:10px}
+.integration-actions{display:flex;gap:6px}
+.add-form{display:none;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px}
+.add-form.open{display:block}
+.add-form .form-row{display:flex;gap:8px;margin-bottom:10px;align-items:center}
+.add-form .form-row label{width:100px;font-size:.82rem;color:var(--text-sec);flex-shrink:0}
+.add-form .form-row input,.add-form .form-row select{flex:1;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:8px 12px;color:var(--text);font-family:var(--font-body);font-size:.85rem;outline:none}
+.add-form .form-row select{cursor:pointer}
+.add-form .form-row input:focus,.add-form .form-row select:focus{border-color:var(--amber-dim)}
+.add-form .form-status{font-size:.82rem;margin-top:8px}
+.toggle-add{font-size:.82rem;color:var(--amber);cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-bottom:14px}
+.toggle-add:hover{color:var(--amber-light)}
+.infer-bar{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+.infer-result{padding:10px 0;border-bottom:1px solid var(--border-subtle);font-size:.85rem}
+.infer-result:last-child{border-bottom:none}
+.infer-original{color:var(--text-muted);text-decoration:line-through;font-size:.82rem}
+.infer-inferred{color:var(--green);margin-top:2px}
+.infer-confidence{font-family:var(--font-mono);font-size:.72rem;color:var(--text-muted);margin-left:8px}
+.infer-reason{font-size:.78rem;color:var(--text-muted);margin-top:2px;font-style:italic}
+
 #login-overlay{position:fixed;inset:0;z-index:100;background:var(--bg);display:none;align-items:center;justify-content:center}
 #login-overlay.visible{display:flex}
 .login-box{width:480px;max-width:90vw;text-align:center}
@@ -298,16 +323,33 @@ button.danger:hover{background:var(--red);color:var(--bg)}
       <div class="guide-num">4</div>
       <div class="guide-content">
         <h3>Connect calendar &amp; email (optional)</h3>
-        <p>To see your calendar and mail in the dashboard, add integrations via the CLI:</p>
-        <div class="guide-code">bee integrations add calendar<br>bee integrations add mail</div>
-        <p>The interactive prompts will ask for your CalDAV / IMAP server details. Once connected, events and messages will show up on the <a href="#calendar">Calendar</a> and <a href="#mail">Mail</a> pages.</p>
-        <p style="margin-top:8px">Verify they&rsquo;re working:</p>
-        <div class="guide-code">bee integrations test my-calendar<br>bee integrations test my-email</div>
+        <p>You can connect your calendars and email right from the dashboard:</p>
+        <p style="margin-top:8px"><strong>1.</strong> Go to the <a href="#calendar">Calendar</a> or <a href="#mail">Mail</a> page</p>
+        <p><strong>2.</strong> Click &ldquo;+ Add Integration&rdquo;</p>
+        <p><strong>3.</strong> Pick your provider (iCloud, Google, Outlook, or custom), enter your email and <strong>app-specific password</strong></p>
+        <p><strong>4.</strong> Click &ldquo;Connect&rdquo; &mdash; it will auto-test the connection</p>
+        <p style="margin-top:10px;font-size:.82rem;color:var(--text-muted)"><strong>Important:</strong> Use an <em>app-specific password</em>, not your main login password. For iCloud: Settings &rarr; Sign-In &amp; Security &rarr; App-Specific Passwords. For Google: <span style="color:var(--amber)">myaccount.google.com/apppasswords</span></p>
+        <p style="margin-top:8px">Or from the terminal:</p>
+        <div class="guide-code">bee integrations add calendar<br>bee integrations add mail<br>bee integrations test my-calendar</div>
       </div>
     </div>
 
     <div class="guide-step">
       <div class="guide-num">5</div>
+      <div class="guide-content">
+        <h3>Use AI inference on conversations</h3>
+        <p>When your Bee captures garbled or unclear speech, AI can fill in the gaps:</p>
+        <p style="margin-top:8px"><strong>1.</strong> Make sure you have an AI provider set up (step 3)</p>
+        <p><strong>2.</strong> Open any conversation from the <a href="#conversations">Conversations</a> page</p>
+        <p><strong>3.</strong> Click the &ldquo;Run Inference&rdquo; button</p>
+        <p style="margin-top:8px">The AI will analyze unclear utterances using the surrounding context and suggest what was actually said. Results are stored locally and shown with confidence scores.</p>
+        <p style="margin-top:8px">Or from the terminal:</p>
+        <div class="guide-code">bee infer &lt;conversation_id&gt;</div>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">6</div>
       <div class="guide-content">
         <h3>Explore your data</h3>
         <p>Now you&rsquo;re set! Here&rsquo;s what each section does:</p>
@@ -388,11 +430,60 @@ button.danger:hover{background:var(--red);color:var(--bg)}
   <div class="page" id="page-calendar">
     <h1>Calendar</h1>
     <p class="subtitle">Upcoming events from connected calendars</p>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-bottom:10px">Connected Calendars</h3>
+      <div id="cal-integrations" class="integration-list"><div class="loading">Loading</div></div>
+      <span class="toggle-add" onclick="toggleAddForm('cal')">+ Add Calendar Integration</span>
+      <div id="cal-add-form" class="add-form">
+        <div class="form-row">
+          <label>Provider</label>
+          <select id="cal-provider" onchange="updateCalDefaults()">
+            <option value="icloud">iCloud</option><option value="google">Google</option>
+            <option value="outlook">Outlook</option><option value="generic">Other / Generic</option>
+          </select>
+        </div>
+        <div class="form-row"><label>Name</label><input type="text" id="cal-name" placeholder="my-calendar"></div>
+        <div class="form-row"><label>Email</label><input type="text" id="cal-username" placeholder="you@example.com"></div>
+        <div class="form-row"><label>CalDAV Host</label><input type="text" id="cal-host" placeholder="caldav.example.com"></div>
+        <div class="form-row"><label>App Password</label><input type="password" id="cal-password" placeholder="App-specific password"></div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button id="cal-save-btn" onclick="saveIntegration('calendar')">Connect</button>
+          <button class="ghost" onclick="toggleAddForm('cal')">Cancel</button>
+        </div>
+        <div id="cal-form-status" class="form-status"></div>
+      </div>
+    </div>
+    <h2>Upcoming Events</h2>
     <div class="card" id="calendar-events"></div>
   </div>
   <div class="page" id="page-mail">
     <h1>Mail</h1>
     <p class="subtitle">Recent messages from connected email accounts</p>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-bottom:10px">Connected Mail Accounts</h3>
+      <div id="mail-integrations" class="integration-list"><div class="loading">Loading</div></div>
+      <span class="toggle-add" onclick="toggleAddForm('mail')">+ Add Mail Integration</span>
+      <div id="mail-add-form" class="add-form">
+        <div class="form-row">
+          <label>Provider</label>
+          <select id="mail-provider" onchange="updateMailDefaults()">
+            <option value="icloud">iCloud</option><option value="google">Google</option>
+            <option value="outlook">Outlook</option><option value="generic">Other / Generic</option>
+          </select>
+        </div>
+        <div class="form-row"><label>Name</label><input type="text" id="mail-name" placeholder="my-email"></div>
+        <div class="form-row"><label>Email</label><input type="text" id="mail-username" placeholder="you@example.com"></div>
+        <div class="form-row"><label>IMAP Host</label><input type="text" id="mail-host" placeholder="imap.example.com"></div>
+        <div class="form-row"><label>Port</label><input type="text" id="mail-port" placeholder="993"></div>
+        <div class="form-row"><label>App Password</label><input type="password" id="mail-password" placeholder="App-specific password"></div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button id="mail-save-btn" onclick="saveIntegration('mail')">Connect</button>
+          <button class="ghost" onclick="toggleAddForm('mail')">Cancel</button>
+        </div>
+        <div id="mail-form-status" class="form-status"></div>
+      </div>
+    </div>
+    <h2>Recent Messages</h2>
     <div class="card" id="mail-messages"></div>
   </div>
   <div class="page" id="page-settings">
@@ -619,6 +710,13 @@ window.showConversation = async function(id) {
     if (c.primary_location && c.primary_location.address) {
       html += '<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:16px">Location: ' + esc(c.primary_location.address) + '</div>';
     }
+    html += '<div class="infer-bar">';
+    html += '<span style="font-size:.85rem;color:var(--text-sec)">AI Inference &mdash; analyze unclear utterances</span>';
+    html += '<button id="infer-btn" style="padding:6px 16px;font-size:.82rem" onclick="runInference(' + Number(c.id) + ')">Run Inference</button>';
+    html += '<span id="infer-status" style="font-size:.82rem;color:var(--text-muted)"></span>';
+    html += '</div>';
+    html += '<div id="infer-results"></div>';
+
     html += '<h3>Utterances</h3>';
     var transcription = c.transcriptions && c.transcriptions.length > 0
       ? (c.transcriptions.find(function(t) { return !t.realtime; }) || c.transcriptions[0]) : null;
@@ -626,13 +724,16 @@ window.showConversation = async function(id) {
       var utts = transcription.utterances.slice().sort(function(a,b) { return (a.spoken_at||a.start||0) - (b.spoken_at||b.start||0); });
       for (var i = 0; i < utts.length; i++) {
         var u = utts[i];
-        html += '<div class="utterance"><div class="speaker">' + esc(u.speaker||'unknown') + '</div>'
+        html += '<div class="utterance" id="utt-' + Number(u.id||0) + '"><div class="speaker">' + esc(u.speaker||'unknown') + '</div>'
           + '<div class="text">' + esc(u.text||'') + '</div></div>';
       }
     } else {
       html += '<div class="empty">No utterances</div>';
     }
     html += '</div>';
+
+    // Load existing inferences for this conversation
+    loadConversationInferences(Number(c.id));
     setHtml(detail, html);
   } catch(e) {
     setHtml(detail, '<div class="empty">Error: ' + esc(e.message) + '</div>');
@@ -756,12 +857,14 @@ window.deleteSpeaker = async function(name) {
 
 // --- Calendar ---
 async function loadCalendar() {
+  loadIntegrationsList('calendar', 'cal-integrations');
+  updateCalDefaults();
   var div = document.getElementById('calendar-events');
   setHtml(div, '<div class="loading">Loading events</div>');
   try {
     var events = await apiLocal('/calendar/events');
     if (events.length === 0) {
-      setHtml(div, '<div class="empty">No upcoming events. Configure a calendar integration via the CLI.</div>');
+      setHtml(div, '<div class="empty">No upcoming events. Add a calendar integration above to get started.</div>');
       return;
     }
     setHtml(div, events.map(function(e) {
@@ -777,12 +880,14 @@ async function loadCalendar() {
 
 // --- Mail ---
 async function loadMail() {
+  loadIntegrationsList('mail', 'mail-integrations');
+  updateMailDefaults();
   var div = document.getElementById('mail-messages');
   setHtml(div, '<div class="loading">Loading messages</div>');
   try {
     var msgs = await apiLocal('/mail/recent?limit=30');
     if (msgs.length === 0) {
-      setHtml(div, '<div class="empty">No messages. Configure a mail integration via the CLI.</div>');
+      setHtml(div, '<div class="empty">No messages. Add a mail integration above to get started.</div>');
       return;
     }
     setHtml(div, msgs.map(function(m) {
@@ -793,6 +898,228 @@ async function loadMail() {
   } catch(e) {
     setHtml(div, '<div class="empty">Failed: ' + esc(e.message) + '</div>');
   }
+}
+
+// --- Integration Management ---
+var providerDefaults = {
+  icloud: { calendarHost: 'caldav.icloud.com', imapHost: 'imap.mail.me.com', imapPort: 993 },
+  google: { calendarHost: 'apidata.googleusercontent.com', imapHost: 'imap.gmail.com', imapPort: 993 },
+  outlook: { calendarHost: 'outlook.office365.com', imapHost: 'outlook.office365.com', imapPort: 993 },
+  generic: { calendarHost: '', imapHost: '', imapPort: 993 }
+};
+
+window.toggleAddForm = function(prefix) {
+  var form = document.getElementById(prefix + '-add-form');
+  form.classList.toggle('open');
+};
+
+window.updateCalDefaults = function() {
+  var prov = document.getElementById('cal-provider').value;
+  var d = providerDefaults[prov] || {};
+  document.getElementById('cal-host').value = d.calendarHost || '';
+  if (!document.getElementById('cal-name').value) {
+    document.getElementById('cal-name').value = prov + '-calendar';
+  }
+};
+
+window.updateMailDefaults = function() {
+  var prov = document.getElementById('mail-provider').value;
+  var d = providerDefaults[prov] || {};
+  document.getElementById('mail-host').value = d.imapHost || '';
+  document.getElementById('mail-port').value = String(d.imapPort || 993);
+  if (!document.getElementById('mail-name').value) {
+    document.getElementById('mail-name').value = prov + '-mail';
+  }
+};
+
+async function loadIntegrationsList(type, containerId) {
+  var div = document.getElementById(containerId);
+  try {
+    var all = await apiLocal('/integrations');
+    var filtered = all.filter(function(i) { return i.type === type; });
+    if (filtered.length === 0) {
+      setHtml(div, '<div style="font-size:.85rem;color:var(--text-muted);padding:8px 0">No ' + esc(type) + ' integrations configured yet.</div>');
+      return;
+    }
+    setHtml(div, filtered.map(function(i) {
+      var n = esc(i.name);
+      var t = esc(type);
+      return '<div class="integration-row">'
+        + '<div><span class="integration-name">' + n + '</span>'
+        + '<span class="integration-meta">' + esc(i.provider) + ' &middot; ' + esc(i.host||'') + '</span></div>'
+        + '<div class="integration-actions">'
+        + '<button class="ghost" style="padding:4px 12px;font-size:.75rem" onclick="testIntegration(&#39;' + n + '&#39;)">Test</button>'
+        + '<button class="danger" style="padding:4px 12px;font-size:.75rem" onclick="removeIntegration(&#39;' + n + '&#39;,&#39;' + t + '&#39;)">Remove</button>'
+        + '</div></div>';
+    }).join(''));
+  } catch(e) {
+    setHtml(div, '<div style="font-size:.82rem;color:var(--red)">Failed to load: ' + esc(e.message) + '</div>');
+  }
+}
+
+window.saveIntegration = async function(type) {
+  var prefix = type === 'calendar' ? 'cal' : 'mail';
+  var statusDiv = document.getElementById(prefix + '-form-status');
+  var provider = document.getElementById(prefix + '-provider').value;
+  var name = document.getElementById(prefix + '-name').value.trim();
+  var username = document.getElementById(prefix + '-username').value.trim();
+  var host = document.getElementById(prefix + '-host').value.trim();
+  var password = document.getElementById(prefix + '-password').value.trim();
+  var port = prefix === 'mail' ? Number(document.getElementById('mail-port').value) || 993 : undefined;
+
+  if (!name) { statusDiv.style.color = 'var(--red)'; setText(statusDiv, 'Name is required'); return; }
+  if (!password) { statusDiv.style.color = 'var(--red)'; setText(statusDiv, 'App password is required'); return; }
+
+  statusDiv.style.color = 'var(--text-muted)';
+  setText(statusDiv, 'Connecting...');
+  try {
+    var body = { name: name, type: type, provider: provider, host: host || undefined, port: port, username: username || undefined, password: password };
+    await apiLocal('/integrations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    statusDiv.style.color = 'var(--green)';
+    setText(statusDiv, 'Connected! Testing...');
+    try {
+      var testResult = await apiLocal('/integrations/' + encodeURIComponent(name) + '/test', { method: 'POST' });
+      if (testResult.type === 'calendar') {
+        setText(statusDiv, 'Connected! Found ' + testResult.calendars.length + ' calendar(s).');
+      } else {
+        setText(statusDiv, 'Connected! Retrieved ' + testResult.messages.length + ' message(s).');
+      }
+    } catch(te) {
+      statusDiv.style.color = 'var(--amber)';
+      setText(statusDiv, 'Saved but test failed: ' + te.message + '. Check credentials.');
+    }
+    // Reset form
+    document.getElementById(prefix + '-name').value = '';
+    document.getElementById(prefix + '-username').value = '';
+    document.getElementById(prefix + '-password').value = '';
+    // Reload
+    if (type === 'calendar') { loadIntegrationsList('calendar', 'cal-integrations'); loadCalendarEvents(); }
+    else { loadIntegrationsList('mail', 'mail-integrations'); loadMailMessages(); }
+  } catch(e) {
+    statusDiv.style.color = 'var(--red)';
+    setText(statusDiv, 'Error: ' + e.message);
+  }
+};
+
+async function loadCalendarEvents() {
+  var div = document.getElementById('calendar-events');
+  setHtml(div, '<div class="loading">Loading events</div>');
+  try {
+    var events = await apiLocal('/calendar/events');
+    if (events.length === 0) { setHtml(div, '<div class="empty">No upcoming events</div>'); return; }
+    setHtml(div, events.map(function(e) {
+      return '<div class="event-item"><div class="event-time">' + esc(e.start||'') + (e.end ? ' - ' + esc(e.end) : '') + '</div>'
+        + '<div class="event-title">' + esc(e.summary||'(no title)') + '</div>'
+        + (e.location ? '<div class="event-location">' + esc(e.location) + '</div>' : '') + '</div>';
+    }).join(''));
+  } catch(e) { setHtml(div, '<div class="empty">Failed: ' + esc(e.message) + '</div>'); }
+}
+
+async function loadMailMessages() {
+  var div = document.getElementById('mail-messages');
+  setHtml(div, '<div class="loading">Loading messages</div>');
+  try {
+    var msgs = await apiLocal('/mail/recent?limit=30');
+    if (msgs.length === 0) { setHtml(div, '<div class="empty">No messages</div>'); return; }
+    setHtml(div, msgs.map(function(m) {
+      return '<div class="mail-item"><div class="mail-date">' + esc(m.date||'') + '</div>'
+        + '<div class="mail-from">' + esc(m.from||'') + '</div>'
+        + '<div class="mail-subject">' + esc(m.subject||'(no subject)') + '</div></div>';
+    }).join(''));
+  } catch(e) { setHtml(div, '<div class="empty">Failed: ' + esc(e.message) + '</div>'); }
+}
+
+window.testIntegration = async function(name) {
+  try {
+    var result = await apiLocal('/integrations/' + encodeURIComponent(name) + '/test', { method: 'POST' });
+    if (result.type === 'calendar') {
+      alert('Success! Found ' + result.calendars.length + ' calendar(s): ' + result.calendars.join(', '));
+    } else {
+      alert('Success! Retrieved ' + result.messages.length + ' recent message(s).');
+    }
+  } catch(e) {
+    alert('Test failed: ' + e.message);
+  }
+};
+
+window.removeIntegration = async function(name, type) {
+  if (!confirm('Remove integration "' + name + '"? This will delete stored credentials.')) return;
+  try {
+    await apiLocal('/integrations/' + encodeURIComponent(name), { method: 'DELETE' });
+    if (type === 'calendar') loadCalendar();
+    else loadMail();
+  } catch(e) { alert('Error: ' + e.message); }
+};
+
+// --- AI Inference ---
+window.runInference = async function(conversationId) {
+  var btn = document.getElementById('infer-btn');
+  var statusEl = document.getElementById('infer-status');
+  var resultsDiv = document.getElementById('infer-results');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  setText(statusEl, '');
+  setHtml(resultsDiv, '');
+  try {
+    var r = await fetch('/api/local/infer/' + Number(conversationId), { method: 'POST' });
+    var data = await r.json();
+    if (!r.ok) {
+      statusEl.style.color = 'var(--red)';
+      setText(statusEl, data.error || 'Failed');
+      btn.textContent = 'Run Inference';
+      btn.disabled = false;
+      return;
+    }
+    setText(statusEl, data.total_utterances + ' utterances, ' + data.unclear_count + ' unclear, ' + data.inferences.length + ' inferred');
+    if (data.inferences.length > 0) {
+      var html = '<div class="card" style="margin-bottom:16px"><h3 style="margin-bottom:10px">Inference Results</h3>';
+      for (var i = 0; i < data.inferences.length; i++) {
+        var inf = data.inferences[i];
+        var pct = (inf.confidence * 100).toFixed(0);
+        html += '<div class="infer-result">';
+        html += '<div class="infer-original">' + esc(inf.original_text || 'Utterance ' + inf.utterance_id) + '</div>';
+        html += '<div class="infer-inferred">' + esc(inf.inferred_text) + '<span class="infer-confidence">' + esc(pct) + '%</span></div>';
+        if (inf.reasoning) html += '<div class="infer-reason">' + esc(inf.reasoning) + '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+      setHtml(resultsDiv, html);
+      // Highlight inferred utterances in the transcript
+      for (var j = 0; j < data.inferences.length; j++) {
+        var uttEl = document.getElementById('utt-' + data.inferences[j].utterance_id);
+        if (uttEl) uttEl.style.borderLeft = '3px solid var(--green)';
+      }
+    }
+  } catch(e) {
+    statusEl.style.color = 'var(--red)';
+    setText(statusEl, 'Error: ' + e.message);
+  }
+  btn.textContent = 'Run Inference';
+  btn.disabled = false;
+};
+
+async function loadConversationInferences(conversationId) {
+  try {
+    var inferences = await apiLocal('/inferences?conversation=' + Number(conversationId));
+    if (inferences.length === 0) return;
+    var resultsDiv = document.getElementById('infer-results');
+    if (!resultsDiv) return;
+    var html = '<div class="card" style="margin-bottom:16px"><h3 style="margin-bottom:10px">Previous Inferences</h3>';
+    for (var i = 0; i < inferences.length; i++) {
+      var inf = inferences[i];
+      var pct = (inf.confidence * 100).toFixed(0);
+      html += '<div class="infer-result">';
+      html += '<div class="infer-original">' + esc(inf.original_text) + '</div>';
+      html += '<div class="infer-inferred">' + esc(inf.inferred_text) + '<span class="infer-confidence">' + esc(pct) + '%</span></div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    setHtml(resultsDiv, html);
+    for (var j = 0; j < inferences.length; j++) {
+      var uttEl = document.getElementById('utt-' + inferences[j].utterance_id);
+      if (uttEl) uttEl.style.borderLeft = '3px solid var(--green)';
+    }
+  } catch(e) {}
 }
 
 // --- Settings ---
