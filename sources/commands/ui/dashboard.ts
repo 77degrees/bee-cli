@@ -11,10 +11,10 @@ export function getDashboardHtml(): string {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#090909;--surface:#111;--card:#161616;--card-hover:#1c1c1c;
-  --border:#222;--border-subtle:#1a1a1a;
+  --bg:#12110f;--surface:#1a1816;--card:#1f1d1a;--card-hover:#262320;
+  --border:#2a2723;--border-subtle:#221f1c;
   --amber:#d4a843;--amber-light:#e8c97a;--amber-dim:#7a5d2a;
-  --amber-glow:rgba(212,168,67,.06);
+  --amber-glow:rgba(212,168,67,.08);
   --text:#e6ded2;--text-sec:#8a8278;--text-muted:#5a554e;
   --green:#5a9a6a;--red:#c45c5c;--blue:#5a7ca8;
   --radius:10px;--radius-sm:6px;
@@ -131,12 +131,87 @@ button.danger:hover{background:var(--red);color:var(--bg)}
 .hex-accent{position:fixed;right:-80px;bottom:-80px;width:300px;height:300px;
   background:conic-gradient(from 30deg,transparent 0deg,var(--amber-glow) 60deg,transparent 120deg);
   clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);opacity:.35;pointer-events:none;z-index:0}
+
+.guide-step{display:flex;gap:18px;padding:20px 24px;margin-bottom:14px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);transition:border-color .15s}
+.guide-step:hover{border-color:var(--amber-dim)}
+.guide-num{width:36px;height:36px;border-radius:50%;background:var(--surface);border:2px solid var(--amber-dim);
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:800;
+  color:var(--amber);font-size:1rem;flex-shrink:0;margin-top:2px}
+.guide-content{flex:1}
+.guide-content h3{margin-bottom:8px}
+.guide-content h4{font-family:var(--font-display);font-size:.85rem;font-weight:600;color:var(--amber-dim)}
+.guide-content p{font-size:.88rem;color:var(--text-sec);line-height:1.6;margin-bottom:6px}
+.guide-code{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:12px 16px;font-family:var(--font-mono);font-size:.82rem;color:var(--amber-light);
+  line-height:1.8;margin:10px 0 12px;overflow-x:auto;white-space:pre}
+
+#login-overlay{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;
+  transition:opacity .4s ease}
+#login-overlay.hidden{opacity:0;pointer-events:none}
+.login-box{width:480px;max-width:90vw;text-align:center}
+.login-box .logo{font-family:var(--font-display);font-weight:800;font-size:2.2rem;color:var(--amber);margin-bottom:6px}
+.login-box .logo span{opacity:.5;font-size:.5em;font-weight:400;color:var(--text-sec);letter-spacing:.05em;text-transform:uppercase}
+.login-box .tagline{font-size:.9rem;color:var(--text-sec);margin-bottom:36px}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;text-align:left}
+.login-card h3{margin-bottom:16px;text-align:center}
+.login-card p{font-size:.85rem;color:var(--text-sec);line-height:1.6;margin-bottom:12px}
+.login-pairing-url{display:block;text-align:center;font-family:var(--font-mono);font-size:.85rem;
+  background:var(--surface);border:1px solid var(--amber-dim);border-radius:var(--radius-sm);
+  padding:14px;margin:16px 0;color:var(--amber-light);word-break:break-all}
+.login-pairing-url:hover{background:var(--card-hover);border-color:var(--amber)}
+.login-status{text-align:center;font-size:.85rem;color:var(--text-muted);margin-top:16px}
+.login-status .spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--amber);
+  border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:middle}
+.login-divider{display:flex;align-items:center;gap:12px;margin:24px 0;color:var(--text-muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}
+.login-divider::before,.login-divider::after{content:'';flex:1;border-top:1px solid var(--border)}
+.login-token-row{display:flex;gap:8px}
+.login-token-row input{flex:1}
+.login-error{color:var(--red);font-size:.82rem;text-align:center;margin-top:10px}
+.login-expires{font-size:.75rem;color:var(--text-muted);text-align:center}
 </style>
 </head>
 <body>
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="logo">bee <span>dashboard</span></div>
+    <div class="tagline">Connect your Bee account to get started</div>
+    <div class="login-card" id="login-card">
+      <div id="login-initial">
+        <h3>Connect to Bee</h3>
+        <p>Click the button below to start the authentication flow. You'll get a link to open on your phone to approve the connection.</p>
+        <div style="text-align:center;margin-top:20px">
+          <button id="login-start-btn" style="padding:12px 32px;font-size:.95rem">Start Pairing</button>
+        </div>
+        <div class="login-divider">or paste a token</div>
+        <div class="login-token-row">
+          <input type="password" id="login-token-input" placeholder="Paste your API token...">
+          <button id="login-token-btn" class="ghost">Login</button>
+        </div>
+        <div id="login-error" class="login-error" style="display:none"></div>
+      </div>
+      <div id="login-pairing" style="display:none">
+        <h3>Approve the Connection</h3>
+        <p>Open this link on any device and follow the instructions to approve:</p>
+        <a id="login-pairing-link" class="login-pairing-url" href="#" target="_blank" rel="noopener"></a>
+        <p class="login-expires" id="login-expires"></p>
+        <div class="login-status" id="login-poll-status">
+          <span class="spinner"></span>Waiting for approval...
+        </div>
+        <div style="text-align:center;margin-top:16px">
+          <button class="ghost" id="login-cancel-btn" style="font-size:.8rem;padding:6px 16px">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="sidebar">
   <div class="logo">bee <span>dashboard</span></div>
   <nav>
+    <a href="#guide" data-page="guide" style="margin-bottom:12px;border:1px solid var(--amber-dim);border-radius:var(--radius-sm)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+      Getting Started
+    </a>
     <div class="sidebar-section">Live</div>
     <a href="#overview" data-page="overview">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -177,6 +252,88 @@ button.danger:hover{background:var(--red);color:var(--bg)}
 </div>
 
 <div id="main">
+  <div class="page" id="page-guide">
+    <h1>Getting Started</h1>
+    <p class="subtitle">How to connect your Bee, set up AI, and start using the dashboard</p>
+
+    <div class="guide-step">
+      <div class="guide-num">1</div>
+      <div class="guide-content">
+        <h3>Install the Bee app &amp; enable Developer Mode</h3>
+        <p>Download the <strong>Bee</strong> app on your phone. After creating your account, open the app and go to:</p>
+        <div class="guide-code">Settings &rarr; Advanced &rarr; Developer Mode &rarr; Enable</div>
+        <p>This unlocks the Developer API that the CLI needs to access your conversations, facts, and todos.</p>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">2</div>
+      <div class="guide-content">
+        <h3>Log in</h3>
+        <p>If you&rsquo;re not already connected, the dashboard will show a <strong>login screen</strong> automatically. Click &ldquo;Start Pairing&rdquo; and approve the connection from your Bee app on your phone.</p>
+        <p>Or from the terminal:</p>
+        <div class="guide-code">bee login</div>
+        <p>Once logged in, your API token is stored locally. You can verify with:</p>
+        <div class="guide-code">bee status</div>
+        <p>If the dashboard is showing data on the <a href="#overview">Overview</a> page, you&rsquo;re already connected.</p>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">3</div>
+      <div class="guide-content">
+        <h3>Set up your AI provider (for speaker ID &amp; inference)</h3>
+        <p>Some features like <strong>speaker identification</strong> and <strong>inference</strong> require an AI provider. You can use either OpenAI or Anthropic.</p>
+        <h4 style="margin-top:14px;color:var(--text)">Option A: OpenAI</h4>
+        <div class="guide-code">bee config set ai_provider openai<br>bee config set openai_api_key sk-your-key-here</div>
+        <p style="font-size:.82rem;color:var(--text-muted)">Get your API key at <span style="color:var(--amber)">platform.openai.com/api-keys</span>. Default model: gpt-4o.</p>
+        <h4 style="margin-top:14px;color:var(--text)">Option B: Anthropic</h4>
+        <div class="guide-code">bee config set ai_provider anthropic<br>bee config set anthropic_api_key sk-ant-your-key-here</div>
+        <p style="font-size:.82rem;color:var(--text-muted)">Get your API key at <span style="color:var(--amber)">console.anthropic.com/settings/keys</span>. Default model: claude-sonnet.</p>
+        <p style="margin-top:10px">Or set them right here in the <a href="#settings">Settings</a> page using the key/value form.</p>
+        <p style="margin-top:10px"><strong>Env vars also work:</strong> <code style="background:var(--surface);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:.82rem">BEE_AI_PROVIDER</code>, <code style="background:var(--surface);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:.82rem">OPENAI_API_KEY</code>, or <code style="background:var(--surface);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:.82rem">ANTHROPIC_API_KEY</code></p>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">4</div>
+      <div class="guide-content">
+        <h3>Connect calendar &amp; email (optional)</h3>
+        <p>To see your calendar and mail in the dashboard, add integrations via the CLI:</p>
+        <div class="guide-code">bee integrations add calendar<br>bee integrations add mail</div>
+        <p>The interactive prompts will ask for your CalDAV / IMAP server details. Once connected, events and messages will show up on the <a href="#calendar">Calendar</a> and <a href="#mail">Mail</a> pages.</p>
+        <p style="margin-top:8px">Verify they&rsquo;re working:</p>
+        <div class="guide-code">bee integrations test my-calendar<br>bee integrations test my-email</div>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">5</div>
+      <div class="guide-content">
+        <h3>Explore your data</h3>
+        <p>Now you&rsquo;re set! Here&rsquo;s what each section does:</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;margin-top:10px;font-size:.88rem">
+          <div><strong style="color:var(--amber)">Overview</strong> &mdash; Quick stats and recent conversations</div>
+          <div><strong style="color:var(--amber)">Conversations</strong> &mdash; Browse transcripts with full utterances</div>
+          <div><strong style="color:var(--amber)">Facts</strong> &mdash; Things Bee has learned about you</div>
+          <div><strong style="color:var(--amber)">Todos</strong> &mdash; Action items from your conversations</div>
+          <div><strong style="color:var(--amber)">Speakers</strong> &mdash; Name the people Bee hears</div>
+          <div><strong style="color:var(--amber)">Calendar</strong> &mdash; Upcoming events from CalDAV</div>
+          <div><strong style="color:var(--amber)">Mail</strong> &mdash; Recent messages from IMAP</div>
+          <div><strong style="color:var(--amber)">Settings</strong> &mdash; API keys and configuration</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-step" style="border:1px solid var(--amber-dim);background:var(--amber-glow)">
+      <div class="guide-num" style="background:var(--amber);color:var(--bg)">?</div>
+      <div class="guide-content">
+        <h3>Quick reference &mdash; CLI commands</h3>
+        <div class="guide-code" style="background:var(--card)">bee login / logout / status     &mdash; Authentication<br>bee today / now / daily          &mdash; Summaries<br>bee conversations / stream       &mdash; Transcripts<br>bee facts / todos / search       &mdash; Knowledge<br>bee speakers list / identify     &mdash; Speaker ID<br>bee cite / infer                 &mdash; Source tracking &amp; AI gap-fill<br>bee config set/get/list          &mdash; Configuration<br>bee integrations add/test        &mdash; Calendar &amp; mail<br>bee ui                           &mdash; This dashboard</div>
+      </div>
+    </div>
+  </div>
+
   <div class="page" id="page-overview">
     <h1>Overview</h1>
     <p class="subtitle">Recent activity from your Bee</p>
@@ -298,7 +455,7 @@ function navigate() {
     a.classList.toggle('active', a.dataset.page === hash);
   });
   var loaders = {
-    overview: loadOverview, conversations: loadConversations,
+    guide: function(){}, overview: loadOverview, conversations: loadConversations,
     facts: loadFacts, todos: loadTodos, speakers: loadSpeakers,
     calendar: loadCalendar, mail: loadMail, settings: loadSettings,
   };
@@ -635,9 +792,147 @@ window.deleteConfig = async function(key) {
   } catch(e) { alert('Error: ' + e.message); }
 };
 
+// --- Auth ---
+var loginOverlay = document.getElementById('login-overlay');
+var pollTimer = null;
+
+async function checkAuth() {
+  try {
+    var data = await (await fetch('/api/auth/status')).json();
+    if (data.authenticated) {
+      hideLogin();
+      return true;
+    }
+  } catch {}
+  showLogin();
+  return false;
+}
+
+function showLogin() {
+  loginOverlay.classList.remove('hidden');
+}
+
+function hideLogin() {
+  loginOverlay.classList.add('hidden');
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+document.getElementById('login-start-btn').addEventListener('click', async function() {
+  this.textContent = 'Starting...';
+  this.disabled = true;
+  var errorDiv = document.getElementById('login-error');
+  errorDiv.style.display = 'none';
+  try {
+    var data = await (await fetch('/api/auth/start', { method: 'POST' })).json();
+    if (data.status === 'completed') {
+      hideLogin();
+      loadOverview();
+      return;
+    }
+    if (data.status === 'pending') {
+      document.getElementById('login-initial').style.display = 'none';
+      var pairingDiv = document.getElementById('login-pairing');
+      pairingDiv.style.display = 'block';
+      var link = document.getElementById('login-pairing-link');
+      link.href = data.pairingUrl;
+      setText(link, data.pairingUrl);
+      var expiresAt = Date.parse(data.expiresAt);
+      var expiresDiv = document.getElementById('login-expires');
+      function updateExpiry() {
+        var remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 60000));
+        setText(expiresDiv, 'Expires in ~' + remaining + ' minute' + (remaining === 1 ? '' : 's'));
+      }
+      updateExpiry();
+      startPolling(expiresAt, updateExpiry);
+    }
+    if (data.error) {
+      errorDiv.style.display = '';
+      setText(errorDiv, data.error);
+    }
+  } catch(e) {
+    errorDiv.style.display = '';
+    setText(errorDiv, 'Failed to start pairing: ' + e.message);
+  }
+  this.textContent = 'Start Pairing';
+  this.disabled = false;
+});
+
+function startPolling(expiresAt, updateExpiry) {
+  var statusDiv = document.getElementById('login-poll-status');
+  pollTimer = setInterval(async function() {
+    updateExpiry();
+    if (Date.now() >= expiresAt) {
+      clearInterval(pollTimer); pollTimer = null;
+      setHtml(statusDiv, 'Pairing expired. <span style="color:var(--amber);cursor:pointer" onclick="resetLogin()">Try again</span>');
+      return;
+    }
+    try {
+      var data = await (await fetch('/api/auth/poll')).json();
+      if (data.status === 'completed') {
+        hideLogin();
+        if (!location.hash || location.hash === '#guide') location.hash = '#overview';
+        navigate();
+        return;
+      }
+      if (data.status === 'expired') {
+        clearInterval(pollTimer); pollTimer = null;
+        setHtml(statusDiv, 'Pairing expired. <span style="color:var(--amber);cursor:pointer" onclick="resetLogin()">Try again</span>');
+      }
+    } catch {}
+  }, 2500);
+}
+
+window.resetLogin = function() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  document.getElementById('login-initial').style.display = '';
+  document.getElementById('login-pairing').style.display = 'none';
+  document.getElementById('login-start-btn').textContent = 'Start Pairing';
+  document.getElementById('login-start-btn').disabled = false;
+};
+
+document.getElementById('login-cancel-btn').addEventListener('click', function() {
+  window.resetLogin();
+});
+
+document.getElementById('login-token-btn').addEventListener('click', async function() {
+  var input = document.getElementById('login-token-input');
+  var token = input.value.trim();
+  if (!token) return;
+  var errorDiv = document.getElementById('login-error');
+  errorDiv.style.display = 'none';
+  this.textContent = 'Logging in...';
+  try {
+    var r = await fetch('/api/auth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token })
+    });
+    var data = await r.json();
+    if (data.status === 'completed') {
+      hideLogin();
+      if (!location.hash || location.hash === '#guide') location.hash = '#overview';
+      navigate();
+      return;
+    }
+    errorDiv.style.display = '';
+    setText(errorDiv, data.error || 'Login failed');
+  } catch(e) {
+    errorDiv.style.display = '';
+    setText(errorDiv, 'Error: ' + e.message);
+  }
+  this.textContent = 'Login';
+});
+
+document.getElementById('login-token-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') document.getElementById('login-token-btn').click();
+});
+
 // --- Boot ---
-if (!location.hash) location.hash = '#overview';
-navigate();
+(async function() {
+  var authed = await checkAuth();
+  if (!location.hash) location.hash = authed ? '#overview' : '#guide';
+  navigate();
+})();
 </script>
 </body>
 </html>`;

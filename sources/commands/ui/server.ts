@@ -1,5 +1,11 @@
 import type { CommandContext } from "@/commands/types";
-import { requireClientToken } from "@/client/clientApi";
+import { loadToken, saveToken } from "@/secureStore";
+import { fetchClientMe } from "@/client/clientMe";
+import { requestAppPairing } from "@/commands/auth/appPairingRequest";
+import {
+  generateAppPairingKeyPair,
+  decryptAppPairingToken,
+} from "@/utils/appPairingCrypto";
 import { getDashboardHtml } from "./dashboard";
 import { tryOpenDatabase } from "@/db/database";
 import {
@@ -23,11 +29,35 @@ const CORS: Record<string, string> = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+function getDefaultAppId(env: string): string {
+  if (env === "staging") return "pk5z3uuzjpxj4f7frk6rsq2f";
+  return "ph9fssu1kv1b0hns69fxf7rx";
+}
+
+type ActivePairing = {
+  appId: string;
+  publicKey: string;
+  secretKey: Uint8Array;
+  requestId: string;
+  pairingUrl: string;
+  expiresAt: string;
+};
+
 export async function startServer(
   context: CommandContext,
   port: number
 ): Promise<void> {
-  const token = await requireClientToken(context);
+  let currentToken: string | null = null;
+  try {
+    currentToken = await loadToken(context.env);
+  } catch {
+    // Not logged in — dashboard will show login screen
+  }
+
+  let activePairing: ActivePairing | null = null;
+
+  const json = (data: unknown, status = 200) =>
+    Response.json(data, { status, headers: CORS });
 
   const server = Bun.serve({
     port,
@@ -45,10 +75,20 @@ export async function startServer(
           });
         }
 
-        if (url.pathname.startsWith("/api/bee/")) {
-          return await proxyBeeApi(context, token, url, req);
+        // --- Auth endpoints (always available) ---
+        if (url.pathname.startsWith("/api/auth/")) {
+          return await handleAuth(url, req);
         }
 
+        // --- Bee API proxy (requires auth) ---
+        if (url.pathname.startsWith("/api/bee/")) {
+          if (!currentToken) {
+            return json({ error: "Not logged in" }, 401);
+          }
+          return await proxyBeeApi(context, currentToken, url, req);
+        }
+
+        // --- Local DB endpoints ---
         if (url.pathname.startsWith("/api/local/")) {
           return await handleLocal(url, req);
         }
@@ -56,19 +96,129 @@ export async function startServer(
         return new Response("Not Found", { status: 404 });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Internal error";
-        return Response.json(
-          { error: msg },
-          { status: 500, headers: CORS }
-        );
+        return json({ error: msg }, 500);
       }
     },
   });
 
+  const loggedInText = currentToken ? "(logged in)" : "(not logged in — use dashboard to connect)";
   console.log("");
-  console.log(`  Bee Dashboard: http://localhost:${server.port}`);
+  console.log(`  Bee Dashboard: http://localhost:${server.port}  ${loggedInText}`);
   console.log("");
   console.log("  Press Ctrl+C to stop.");
   console.log("");
+
+  async function handleAuth(url: URL, req: Request): Promise<Response> {
+    const path = url.pathname.slice("/api/auth".length);
+
+    // Check current auth status
+    if (path === "/status" && req.method === "GET") {
+      if (!currentToken) return json({ authenticated: false });
+      try {
+        const user = await fetchClientMe(context, currentToken);
+        return json({ authenticated: true, user });
+      } catch {
+        currentToken = null;
+        return json({ authenticated: false });
+      }
+    }
+
+    // Start app pairing flow
+    if (path === "/start" && req.method === "POST") {
+      const keyPair = generateAppPairingKeyPair();
+      const appId = getDefaultAppId(context.env);
+
+      const result = await requestAppPairing(
+        context.env,
+        appId,
+        keyPair.publicKeyBase64
+      );
+
+      if (result.status === "completed") {
+        const token = decryptAppPairingToken(
+          result.encryptedToken,
+          keyPair.secretKey
+        );
+        await saveToken(context.env, token);
+        currentToken = token;
+        return json({ status: "completed" });
+      }
+
+      if (result.status === "expired") {
+        return json({ status: "expired" });
+      }
+
+      const pairingUrl = `https://bee.computer/connect#${result.requestId}`;
+      activePairing = {
+        appId,
+        publicKey: keyPair.publicKeyBase64,
+        secretKey: keyPair.secretKey,
+        requestId: result.requestId,
+        pairingUrl,
+        expiresAt: result.expiresAt,
+      };
+
+      return json({
+        status: "pending",
+        pairingUrl,
+        expiresAt: result.expiresAt,
+      });
+    }
+
+    // Poll for pairing completion
+    if (path === "/poll" && req.method === "GET") {
+      if (!activePairing) {
+        return json({ error: "No active pairing session" }, 400);
+      }
+
+      const expiresAtMs = Date.parse(activePairing.expiresAt);
+      if (!Number.isNaN(expiresAtMs) && Date.now() >= expiresAtMs) {
+        activePairing = null;
+        return json({ status: "expired" });
+      }
+
+      const result = await requestAppPairing(
+        context.env,
+        activePairing.appId,
+        activePairing.publicKey
+      );
+
+      if (result.status === "completed") {
+        const token = decryptAppPairingToken(
+          result.encryptedToken,
+          activePairing.secretKey
+        );
+        await saveToken(context.env, token);
+        currentToken = token;
+        activePairing = null;
+        return json({ status: "completed" });
+      }
+
+      if (result.status === "expired") {
+        activePairing = null;
+        return json({ status: "expired" });
+      }
+
+      return json({ status: "pending" });
+    }
+
+    // Direct token login
+    if (path === "/token" && req.method === "POST") {
+      const body = (await req.json()) as { token?: string };
+      const rawToken = body.token?.trim();
+      if (!rawToken) return json({ error: "Token required" }, 400);
+      try {
+        const user = await fetchClientMe(context, rawToken);
+        await saveToken(context.env, rawToken);
+        currentToken = rawToken;
+        return json({ status: "completed", user });
+      } catch {
+        return json({ error: "Invalid token" }, 401);
+      }
+    }
+
+    return json({ error: "Not found" }, 404);
+  }
 
   await new Promise(() => {});
 }
