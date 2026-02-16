@@ -512,6 +512,19 @@ button.danger:hover{background:var(--red);color:var(--bg)}
         <button id="openai-key-save">Save</button>
       </div>
       <div id="openai-key-status" style="font-size:.82rem;margin-top:4px"></div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:.78rem;color:var(--text-muted)">Model:</span>
+        <select id="openai-model-select" style="background:var(--card);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--text);font-size:.82rem;cursor:pointer">
+          <option value="gpt-4o">gpt-4o (default)</option>
+          <option value="gpt-4o-mini">gpt-4o-mini</option>
+          <option value="gpt-4.1">gpt-4.1</option>
+          <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+          <option value="gpt-4.1-nano">gpt-4.1-nano</option>
+          <option value="o3-mini">o3-mini</option>
+        </select>
+        <button id="openai-model-save" class="ghost" style="padding:4px 10px;font-size:.75rem">Save Model</button>
+        <span id="openai-model-status" style="font-size:.78rem"></span>
+      </div>
     </div>
 
     <div class="card" style="margin-bottom:20px">
@@ -522,6 +535,16 @@ button.danger:hover{background:var(--red);color:var(--bg)}
         <button id="anthropic-key-save">Save</button>
       </div>
       <div id="anthropic-key-status" style="font-size:.82rem;margin-top:4px"></div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:.78rem;color:var(--text-muted)">Model:</span>
+        <select id="anthropic-model-select" style="background:var(--card);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--text);font-size:.82rem;cursor:pointer">
+          <option value="claude-sonnet-4-20250514">claude-sonnet-4 (default)</option>
+          <option value="claude-haiku-4-20250414">claude-haiku-4</option>
+          <option value="claude-opus-4-20250514">claude-opus-4</option>
+        </select>
+        <button id="anthropic-model-save" class="ghost" style="padding:4px 10px;font-size:.75rem">Save Model</button>
+        <span id="anthropic-model-status" style="font-size:.78rem"></span>
+      </div>
     </div>
 
     <div id="ai-active-provider" class="card" style="margin-bottom:20px;display:none">
@@ -529,6 +552,7 @@ button.danger:hover{background:var(--red);color:var(--bg)}
         <div>
           <span style="font-size:.82rem;color:var(--text-muted)">Active AI provider:</span>
           <span id="ai-active-name" style="font-weight:600;color:var(--amber);margin-left:6px"></span>
+          <span id="ai-active-model" style="font-size:.78rem;color:var(--text-muted);margin-left:8px"></span>
         </div>
         <div style="display:flex;gap:8px">
           <button id="ai-switch-openai" class="ghost" style="padding:4px 12px;font-size:.78rem">Use OpenAI</button>
@@ -653,7 +677,12 @@ async function loadOverview() {
 async function loadConversations() {
   var list = document.getElementById('conversations-list');
   var detail = document.getElementById('conversations-detail');
-  detail.style.display = 'none';
+  // Don't reset detail view if it's currently showing a conversation
+  if (detail.style.display !== 'block') {
+    detail.style.display = 'none';
+  } else {
+    return; // Keep showing conversation detail
+  }
   if (convoList.length > 0) {
     setHtml(list, convoList.map(convoCardHtml).join(''));
     return;
@@ -1413,22 +1442,61 @@ async function switchProvider(name) {
 document.getElementById('ai-switch-openai').addEventListener('click', function() { switchProvider('openai'); });
 document.getElementById('ai-switch-anthropic').addEventListener('click', function() { switchProvider('anthropic'); });
 
+document.getElementById('openai-model-save').addEventListener('click', async function() {
+  var sel = document.getElementById('openai-model-select');
+  var status = document.getElementById('openai-model-status');
+  try {
+    await apiLocal('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key:'openai_model', value: sel.value}) });
+    status.style.color = 'var(--green)';
+    setText(status, 'Saved');
+    refreshAiProvider();
+    loadSettingsTable();
+    setTimeout(function() { setText(status, ''); }, 2000);
+  } catch(e) { status.style.color = 'var(--red)'; setText(status, 'Error'); }
+});
+
+document.getElementById('anthropic-model-save').addEventListener('click', async function() {
+  var sel = document.getElementById('anthropic-model-select');
+  var status = document.getElementById('anthropic-model-status');
+  try {
+    await apiLocal('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key:'anthropic_model', value: sel.value}) });
+    status.style.color = 'var(--green)';
+    setText(status, 'Saved');
+    refreshAiProvider();
+    loadSettingsTable();
+    setTimeout(function() { setText(status, ''); }, 2000);
+  } catch(e) { status.style.color = 'var(--red)'; setText(status, 'Error'); }
+});
+
 async function refreshAiProvider() {
   var bar = document.getElementById('ai-active-provider');
   var nameSpan = document.getElementById('ai-active-name');
+  var modelSpan = document.getElementById('ai-active-model');
   try {
     var entries = await apiLocal('/config');
     var provider = null;
     var hasOpenai = false;
     var hasAnthropic = false;
+    var openaiModel = null;
+    var anthropicModel = null;
     for (var i = 0; i < entries.length; i++) {
       if (entries[i].key === 'ai_provider') provider = entries[i].value;
       if (entries[i].key === 'openai_api_key') hasOpenai = true;
       if (entries[i].key === 'anthropic_api_key') hasAnthropic = true;
+      if (entries[i].key === 'openai_model') openaiModel = entries[i].value;
+      if (entries[i].key === 'anthropic_model') anthropicModel = entries[i].value;
     }
+    // Populate model dropdowns with saved values
+    var oModelSel = document.getElementById('openai-model-select');
+    var aModelSel = document.getElementById('anthropic-model-select');
+    if (openaiModel && oModelSel) oModelSel.value = openaiModel;
+    if (anthropicModel && aModelSel) aModelSel.value = anthropicModel;
+
     if (provider) {
       bar.style.display = '';
       setText(nameSpan, provider);
+      var activeModel = provider === 'openai' ? (openaiModel || 'gpt-4o') : (anthropicModel || 'claude-sonnet-4-20250514');
+      setText(modelSpan, '(' + activeModel + ')');
       document.getElementById('ai-switch-openai').style.display = hasOpenai && provider !== 'openai' ? '' : 'none';
       document.getElementById('ai-switch-anthropic').style.display = hasAnthropic && provider !== 'anthropic' ? '' : 'none';
     } else {
