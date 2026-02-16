@@ -18,7 +18,11 @@ import {
   createProfile,
   deleteProfile,
   getProfileByName,
+  assignSpeaker,
+  getAssignmentsForProfile,
 } from "@/db/speakerRepo";
+import { getAllFingerprints, upsertFingerprint } from "@/db/styleRepo";
+import { analyzeSpeakerFingerprint, identifySpeakers } from "@/ai/speakerAnalyzer";
 import {
   getIntegrationsByType,
   listIntegrations,
@@ -115,6 +119,29 @@ export async function startServer(
             return json({ error: "Not logged in" }, 401);
           }
           return await handleInferRun(url);
+        }
+
+        // --- Speaker identify (needs Bee API + AI provider) ---
+        if (
+          url.pathname.match(/^\/api\/local\/speakers\/identify\/\d/) &&
+          req.method === "POST"
+        ) {
+          if (!currentToken) {
+            return json({ error: "Not logged in" }, 401);
+          }
+          return await handleIdentifyRun(url);
+        }
+
+        // --- Speaker learn (needs Bee API + AI provider) ---
+        if (
+          url.pathname === "/api/local/speakers/learn" &&
+          req.method === "POST"
+        ) {
+          if (!currentToken) {
+            return json({ error: "Not logged in" }, 401);
+          }
+          const body = (await req.json()) as { profile_name?: string };
+          return await handleLearnRun(body.profile_name);
         }
 
         // --- Local DB endpoints ---
@@ -341,6 +368,120 @@ export async function startServer(
     });
   }
 
+  async function handleIdentifyRun(url: URL): Promise<Response> {
+    const idStr = url.pathname.slice("/api/local/speakers/identify/".length);
+    const conversationId = Number.parseInt(idStr, 10);
+    if (!Number.isFinite(conversationId) || conversationId <= 0) {
+      return json({ error: "Invalid conversation ID" }, 400);
+    }
+
+    const provider = resolveAiProvider();
+    if (!provider) {
+      return json({ error: "No AI provider configured. Add a key in Settings first." }, 400);
+    }
+
+    const db = getDatabase();
+    const fingerprints = getAllFingerprints(db);
+    if (fingerprints.length === 0) {
+      return json({ error: "No speaker fingerprints. Assign speakers manually first, then use Learn." }, 400);
+    }
+
+    const headers = new Headers();
+    headers.set("Authorization", `Bearer ${currentToken}`);
+    const response = await context.client.fetch(
+      `/v1/conversations/${conversationId}`,
+      { method: "GET", headers }
+    );
+    if (!response.ok) {
+      return json({ error: "Failed to fetch conversation" }, response.status);
+    }
+    const data = (await response.json()) as unknown;
+    const utterances = extractUtterancesFromData(data);
+    if (utterances.length === 0) {
+      return json({ error: "No utterances found" }, 400);
+    }
+
+    const profiles = fingerprints.map((fp) => ({
+      name: fp.profile_name,
+      vocabulary: fp.vocabulary,
+      topics: fp.topics,
+      patterns: fp.patterns,
+    }));
+
+    const results = await identifySpeakers(
+      provider,
+      utterances.map((u) => ({ speaker: u.speaker, text: u.text })),
+      profiles
+    );
+
+    // Auto-assign high-confidence matches
+    for (const r of results) {
+      if (r.profile_name && r.confidence >= 0.8) {
+        const profile = getProfileByName(db, r.profile_name);
+        if (profile) {
+          assignSpeaker(db, conversationId, r.speaker_label, profile.id, r.confidence, "ai");
+        }
+      }
+    }
+
+    return json({ conversation_id: conversationId, results });
+  }
+
+  async function handleLearnRun(profileName?: string): Promise<Response> {
+    const provider = resolveAiProvider();
+    if (!provider) {
+      return json({ error: "No AI provider configured. Add a key in Settings first." }, 400);
+    }
+
+    const db = getDatabase();
+    const results: Array<{ name: string; utterances: number; topics: string[] }> = [];
+
+    const profilesToLearn = profileName
+      ? [getProfileByName(db, profileName)].filter(Boolean)
+      : listProfiles(db);
+
+    if (profilesToLearn.length === 0) {
+      return json({ error: profileName ? `Profile "${profileName}" not found` : "No profiles exist" }, 400);
+    }
+
+    for (const profile of profilesToLearn) {
+      if (!profile) continue;
+      const assignments = getAssignmentsForProfile(db, profile.id);
+      if (assignments.length === 0) {
+        results.push({ name: profile.name, utterances: 0, topics: [] });
+        continue;
+      }
+
+      const allUtterances: string[] = [];
+      for (const assignment of assignments.slice(0, 20)) {
+        const headers = new Headers();
+        headers.set("Authorization", `Bearer ${currentToken}`);
+        const response = await context.client.fetch(
+          `/v1/conversations/${assignment.conversation_id}`,
+          { method: "GET", headers }
+        );
+        if (!response.ok) continue;
+        const data = (await response.json()) as unknown;
+        const utterances = extractUtterancesFromData(data);
+        const matching = utterances
+          .filter((u) => u.speaker === assignment.speaker_label)
+          .map((u) => u.text);
+        allUtterances.push(...matching);
+      }
+
+      if (allUtterances.length === 0) {
+        results.push({ name: profile.name, utterances: 0, topics: [] });
+        continue;
+      }
+
+      const fingerprint = await analyzeSpeakerFingerprint(provider, profile.name, allUtterances);
+      upsertFingerprint(db, profile.id, fingerprint.vocabulary, fingerprint.topics, fingerprint.patterns, allUtterances.length);
+      results.push({ name: profile.name, utterances: allUtterances.length, topics: fingerprint.topics });
+    }
+
+    return json({ results });
+  }
+
   await new Promise(() => {});
 }
 
@@ -407,6 +548,26 @@ async function handleLocal(url: URL, req: Request): Promise<Response> {
     const body = (await req.json()) as { name: string; notes?: string };
     const profile = createProfile(db, body.name, body.notes);
     return json(profile);
+  }
+  if (path === "/speakers/assign" && req.method === "POST") {
+    const db = getDatabase();
+    const body = (await req.json()) as {
+      conversation_id: number;
+      speaker_label: string;
+      profile_name: string;
+    };
+    if (!body.conversation_id || !body.speaker_label || !body.profile_name) {
+      return json({ error: "conversation_id, speaker_label, and profile_name are required" }, 400);
+    }
+    const profile = getProfileByName(db, body.profile_name);
+    if (!profile) return json({ error: `Profile "${body.profile_name}" not found` }, 404);
+    assignSpeaker(db, body.conversation_id, body.speaker_label, profile.id, 1.0, "manual");
+    return json({ ok: true });
+  }
+  if (path === "/speakers/fingerprints" && req.method === "GET") {
+    const db = tryOpenDatabase();
+    if (!db) return json([]);
+    return json(getAllFingerprints(db));
   }
   if (path.startsWith("/speakers/") && req.method === "DELETE") {
     const name = decodeURIComponent(path.slice("/speakers/".length));

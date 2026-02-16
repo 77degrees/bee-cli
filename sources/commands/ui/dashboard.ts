@@ -422,10 +422,15 @@ button.danger:hover{background:var(--red);color:var(--bg)}
     </div>
     <div class="card">
       <table class="data-table">
-        <thead><tr><th>Name</th><th>Notes</th><th>Created</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Notes</th><th>Fingerprint</th><th>Created</th><th></th></tr></thead>
         <tbody id="speakers-body"></tbody>
       </table>
     </div>
+    <div style="margin-top:16px;display:flex;align-items:center;gap:12px">
+      <button id="learn-btn" class="ghost" onclick="learnSpeakers()">Learn Fingerprints</button>
+      <span style="font-size:.82rem;color:var(--text-muted)">Builds speech patterns from assigned conversations. Requires AI provider.</span>
+    </div>
+    <div id="learn-status" style="font-size:.82rem;margin-top:8px"></div>
   </div>
   <div class="page" id="page-calendar">
     <h1>Calendar</h1>
@@ -710,18 +715,48 @@ window.showConversation = async function(id) {
     if (c.primary_location && c.primary_location.address) {
       html += '<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:16px">Location: ' + esc(c.primary_location.address) + '</div>';
     }
+    // AI action bar
     html += '<div class="infer-bar">';
-    html += '<span style="font-size:.85rem;color:var(--text-sec)">AI Inference &mdash; analyze unclear utterances</span>';
+    html += '<span style="font-size:.85rem;color:var(--text-sec)">AI Tools</span>';
     html += '<button id="infer-btn" style="padding:6px 16px;font-size:.82rem" onclick="runInference(' + Number(c.id) + ')">Run Inference</button>';
+    html += '<button id="identify-btn" style="padding:6px 16px;font-size:.82rem" class="ghost" onclick="runIdentify(' + Number(c.id) + ')">Identify Speakers</button>';
     html += '<span id="infer-status" style="font-size:.82rem;color:var(--text-muted)"></span>';
     html += '</div>';
     html += '<div id="infer-results"></div>';
 
-    html += '<h3>Utterances</h3>';
+    // Speaker assignment section
     var transcription = c.transcriptions && c.transcriptions.length > 0
       ? (c.transcriptions.find(function(t) { return !t.realtime; }) || c.transcriptions[0]) : null;
-    if (transcription && transcription.utterances && transcription.utterances.length > 0) {
-      var utts = transcription.utterances.slice().sort(function(a,b) { return (a.spoken_at||a.start||0) - (b.spoken_at||b.start||0); });
+    var utts = transcription && transcription.utterances && transcription.utterances.length > 0
+      ? transcription.utterances.slice().sort(function(a,b) { return (a.spoken_at||a.start||0) - (b.spoken_at||b.start||0); }) : [];
+    if (utts.length > 0) {
+      var uniqueSpeakers = [];
+      var seen = {};
+      for (var si = 0; si < utts.length; si++) {
+        var sp = utts[si].speaker || 'unknown';
+        if (!seen[sp]) { seen[sp] = true; uniqueSpeakers.push(sp); }
+      }
+      html += '<div class="card" style="margin-bottom:16px;padding:14px 18px">';
+      html += '<h3 style="margin-bottom:10px">Speaker Assignment</h3>';
+      html += '<div id="speaker-assign-rows" style="display:flex;flex-wrap:wrap;gap:10px">';
+      for (var sj = 0; sj < uniqueSpeakers.length; sj++) {
+        var label = uniqueSpeakers[sj];
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm)">';
+        html += '<span style="font-family:var(--font-mono);font-size:.82rem;color:var(--amber)">' + esc(label) + '</span>';
+        html += '<span style="color:var(--text-muted);font-size:.82rem">&rarr;</span>';
+        html += '<select id="assign-' + esc(label).replace(/\\s/g,'-') + '" style="background:var(--card);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--text);font-size:.82rem;cursor:pointer">';
+        html += '<option value="">(unassigned)</option>';
+        html += '</select>';
+        html += '<button class="ghost" style="padding:3px 10px;font-size:.75rem" onclick="assignSpeakerLabel(' + Number(c.id) + ',&#39;' + esc(label) + '&#39;)">Assign</button>';
+        html += '</div>';
+      }
+      html += '</div>';
+      html += '<div id="assign-status" style="font-size:.82rem;margin-top:8px"></div>';
+      html += '</div>';
+    }
+
+    html += '<h3>Utterances</h3>';
+    if (utts.length > 0) {
       for (var i = 0; i < utts.length; i++) {
         var u = utts[i];
         html += '<div class="utterance" id="utt-' + Number(u.id||0) + '"><div class="speaker">' + esc(u.speaker||'unknown') + '</div>'
@@ -732,9 +767,10 @@ window.showConversation = async function(id) {
     }
     html += '</div>';
 
-    // Load existing inferences for this conversation
-    loadConversationInferences(Number(c.id));
     setHtml(detail, html);
+    // Populate speaker assignment dropdowns and load inferences
+    populateSpeakerDropdowns();
+    loadConversationInferences(Number(c.id));
   } catch(e) {
     setHtml(detail, '<div class="empty">Error: ' + esc(e.message) + '</div>');
   }
@@ -819,21 +855,28 @@ document.getElementById('todo-input').addEventListener('keydown', function(e) { 
 // --- Speakers ---
 async function loadSpeakers() {
   var body = document.getElementById('speakers-body');
-  setHtml(body, '<tr><td colspan="4"><div class="loading">Loading</div></td></tr>');
+  setHtml(body, '<tr><td colspan="5"><div class="loading">Loading</div></td></tr>');
   try {
-    var profiles = await apiLocal('/speakers');
+    var results = await Promise.all([apiLocal('/speakers'), apiLocal('/speakers/fingerprints')]);
+    var profiles = results[0];
+    var fingerprints = results[1];
     if (profiles.length === 0) {
-      setHtml(body, '<tr><td colspan="4"><div class="empty">No speaker profiles</div></td></tr>');
+      setHtml(body, '<tr><td colspan="5"><div class="empty">No speaker profiles</div></td></tr>');
       return;
     }
     setHtml(body, profiles.map(function(p) {
+      var fp = fingerprints.find(function(f) { return f.profile_id === p.id; });
+      var fpText = fp && fp.sample_count > 0
+        ? esc(fp.sample_count) + ' samples' + (fp.topics && fp.topics.length ? ', ' + esc(fp.topics.slice(0,3).join(', ')) : '')
+        : '<span style="color:var(--text-muted)">none</span>';
       return '<tr><td style="font-weight:500;color:var(--text)">' + esc(p.name) + '</td>'
         + '<td>' + esc(p.notes||'') + '</td>'
+        + '<td style="font-size:.78rem">' + fpText + '</td>'
         + '<td style="font-family:var(--font-mono);font-size:.75rem">' + esc((p.created_at||'').split('T')[0]) + '</td>'
         + '<td><button class="danger" style="padding:4px 10px;font-size:.75rem" onclick="deleteSpeaker(' + esc(JSON.stringify(p.name)) + ')">Delete</button></td></tr>';
     }).join(''));
   } catch(e) {
-    setHtml(body, '<tr><td colspan="4"><div class="empty">Failed: ' + esc(e.message) + '</div></td></tr>');
+    setHtml(body, '<tr><td colspan="5"><div class="empty">Failed: ' + esc(e.message) + '</div></td></tr>');
   }
 }
 document.getElementById('speaker-add-btn').addEventListener('click', async function() {
@@ -1121,6 +1164,133 @@ async function loadConversationInferences(conversationId) {
     }
   } catch(e) {}
 }
+
+// --- Speaker Assignment in Conversations ---
+async function populateSpeakerDropdowns() {
+  try {
+    var profiles = await apiLocal('/speakers');
+    var selects = document.querySelectorAll('[id^="assign-"]');
+    for (var i = 0; i < selects.length; i++) {
+      var sel = selects[i];
+      // Keep the (unassigned) option, clear the rest
+      while (sel.options.length > 1) sel.remove(1);
+      for (var j = 0; j < profiles.length; j++) {
+        var opt = document.createElement('option');
+        opt.value = profiles[j].name;
+        opt.textContent = profiles[j].name;
+        sel.appendChild(opt);
+      }
+    }
+  } catch(e) {}
+}
+
+window.assignSpeakerLabel = async function(conversationId, speakerLabel) {
+  var selectId = 'assign-' + speakerLabel.replace(/\\s/g, '-');
+  var sel = document.getElementById(selectId);
+  var statusDiv = document.getElementById('assign-status');
+  if (!sel || !sel.value) {
+    if (statusDiv) { statusDiv.style.color = 'var(--red)'; setText(statusDiv, 'Select a profile first'); }
+    return;
+  }
+  var profileName = sel.value;
+  if (statusDiv) { statusDiv.style.color = 'var(--text-muted)'; setText(statusDiv, 'Assigning...'); }
+  try {
+    await apiLocal('/speakers/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId, speaker_label: speakerLabel, profile_name: profileName })
+    });
+    if (statusDiv) { statusDiv.style.color = 'var(--green)'; setText(statusDiv, esc(speakerLabel) + ' assigned to ' + esc(profileName)); }
+    // Update utterance labels in-place
+    var speakers = document.querySelectorAll('.utterance .speaker');
+    for (var si = 0; si < speakers.length; si++) {
+      if (speakers[si].textContent.trim().toLowerCase() === speakerLabel.toLowerCase()) {
+        speakers[si].textContent = profileName;
+      }
+    }
+  } catch(e) {
+    if (statusDiv) { statusDiv.style.color = 'var(--red)'; setText(statusDiv, 'Error: ' + e.message); }
+  }
+};
+
+window.runIdentify = async function(conversationId) {
+  var btn = document.getElementById('identify-btn');
+  var statusEl = document.getElementById('infer-status');
+  btn.disabled = true;
+  btn.textContent = 'Identifying...';
+  setText(statusEl, '');
+  try {
+    var r = await fetch('/api/local/speakers/identify/' + Number(conversationId), { method: 'POST' });
+    var data = await r.json();
+    if (!r.ok) {
+      statusEl.style.color = 'var(--red)';
+      setText(statusEl, data.error || 'Failed');
+      btn.textContent = 'Identify Speakers';
+      btn.disabled = false;
+      return;
+    }
+    var results = data.results || [];
+    var msgs = [];
+    for (var i = 0; i < results.length; i++) {
+      var r2 = results[i];
+      var pct = (r2.confidence * 100).toFixed(0);
+      var name = r2.profile_name || '(unknown)';
+      msgs.push(esc(r2.speaker_label) + ' -> ' + esc(name) + ' (' + pct + '%)');
+    }
+    statusEl.style.color = 'var(--green)';
+    setText(statusEl, msgs.join(' | '));
+    // Update the dropdowns and utterance labels with identified speakers
+    for (var j = 0; j < results.length; j++) {
+      if (results[j].profile_name) {
+        var selectId = 'assign-' + results[j].speaker_label.replace(/\\s/g, '-');
+        var sel = document.getElementById(selectId);
+        if (sel) sel.value = results[j].profile_name;
+        // Update utterance labels in-place
+        var spkEls = document.querySelectorAll('.utterance .speaker');
+        for (var k = 0; k < spkEls.length; k++) {
+          if (spkEls[k].textContent.trim().toLowerCase() === results[j].speaker_label.toLowerCase()) {
+            spkEls[k].textContent = results[j].profile_name;
+          }
+        }
+      }
+    }
+  } catch(e) {
+    statusEl.style.color = 'var(--red)';
+    setText(statusEl, 'Error: ' + e.message);
+  }
+  btn.textContent = 'Identify Speakers';
+  btn.disabled = false;
+};
+
+window.learnSpeakers = async function(profileName) {
+  var btn = document.getElementById('learn-btn');
+  var statusDiv = document.getElementById('learn-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Learning...'; }
+  if (statusDiv) { statusDiv.style.color = 'var(--text-muted)'; setText(statusDiv, 'Analyzing conversations...'); }
+  try {
+    var body = profileName ? { profile_name: profileName } : {};
+    var data = await apiLocal('/speakers/learn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var results = data.results || [];
+    var msgs = [];
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      if (r.utterances === 0) {
+        msgs.push(esc(r.name) + ': no assignments');
+      } else {
+        msgs.push(esc(r.name) + ': ' + r.utterances + ' utterances, topics: ' + (r.topics.length ? esc(r.topics.join(', ')) : 'none'));
+      }
+    }
+    if (statusDiv) { statusDiv.style.color = 'var(--green)'; setText(statusDiv, msgs.join(' | ')); }
+    loadSpeakers();
+  } catch(e) {
+    if (statusDiv) { statusDiv.style.color = 'var(--red)'; setText(statusDiv, 'Error: ' + e.message); }
+  }
+  if (btn) { btn.textContent = 'Learn Fingerprints'; btn.disabled = false; }
+};
 
 // --- Settings ---
 async function loadSettings() {
