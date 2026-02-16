@@ -7,7 +7,7 @@ import {
   decryptAppPairingToken,
 } from "@/utils/appPairingCrypto";
 import { getDashboardHtml } from "./dashboard";
-import { tryOpenDatabase } from "@/db/database";
+import { tryOpenDatabase, getDatabase } from "@/db/database";
 import {
   listConfig,
   setConfigValue,
@@ -270,16 +270,14 @@ async function handleLocal(url: URL, req: Request): Promise<Response> {
     return json(listConfig(db));
   }
   if (path === "/config" && req.method === "POST") {
-    const db = tryOpenDatabase();
-    if (!db) return json({ error: "Database unavailable" }, 500);
+    const db = getDatabase();
     const body = (await req.json()) as { key: string; value: string };
     setConfigValue(db, body.key, body.value);
     return json({ ok: true });
   }
   if (path.startsWith("/config/") && req.method === "DELETE") {
     const key = decodeURIComponent(path.slice("/config/".length));
-    const db = tryOpenDatabase();
-    if (!db) return json({ error: "Database unavailable" }, 500);
+    const db = getDatabase();
     deleteConfigValue(db, key);
     return json({ ok: true });
   }
@@ -291,16 +289,14 @@ async function handleLocal(url: URL, req: Request): Promise<Response> {
     return json(listProfiles(db));
   }
   if (path === "/speakers" && req.method === "POST") {
-    const db = tryOpenDatabase();
-    if (!db) return json({ error: "Database unavailable" }, 500);
+    const db = getDatabase();
     const body = (await req.json()) as { name: string; notes?: string };
     const profile = createProfile(db, body.name, body.notes);
     return json(profile);
   }
   if (path.startsWith("/speakers/") && req.method === "DELETE") {
     const name = decodeURIComponent(path.slice("/speakers/".length));
-    const db = tryOpenDatabase();
-    if (!db) return json({ error: "Database unavailable" }, 500);
+    const db = getDatabase();
     const profile = getProfileByName(db, name);
     if (!profile) return json({ error: "Not found" }, 404);
     deleteProfile(db, profile.id);
