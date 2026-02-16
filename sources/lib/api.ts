@@ -38,6 +38,38 @@ type SearchOptions = {
   neural?: boolean;
 };
 
+type ConfigSetOptions = {
+  key: string;
+  value: string;
+};
+
+type SpeakerCreateOptions = {
+  name: string;
+  notes?: string;
+};
+
+type SpeakerAssignOptions = {
+  conversationId: number;
+  speakerLabel: string;
+  profileName: string;
+};
+
+type CiteSearchOptions = {
+  query: string;
+  limit?: number;
+};
+
+type CalendarEventsOptions = {
+  from?: string;
+  to?: string;
+};
+
+type MailSearchOptions = {
+  query: string;
+  provider?: string;
+  limit?: number;
+};
+
 export type DataApi = {
   me: <T = unknown>() => Promise<T>;
   today: <T = unknown>() => Promise<T>;
@@ -71,6 +103,43 @@ export type DataApi = {
     get: <T = unknown>(id: string | number) => Promise<T>;
   };
   search: <T = unknown>(options: SearchOptions) => Promise<T>;
+  config: {
+    set: <T = unknown>(options: ConfigSetOptions) => Promise<T>;
+    get: <T = unknown>(key: string) => Promise<T>;
+    list: <T = unknown>() => Promise<T>;
+    delete: <T = unknown>(key: string) => Promise<T>;
+  };
+  speakers: {
+    list: <T = unknown>() => Promise<T>;
+    create: <T = unknown>(options: SpeakerCreateOptions) => Promise<T>;
+    delete: <T = unknown>(id: string | number) => Promise<T>;
+    assign: <T = unknown>(options: SpeakerAssignOptions) => Promise<T>;
+    identify: <T = unknown>(conversationId: string | number) => Promise<T>;
+    learn: <T = unknown>(options?: { profile?: string; limit?: number }) => Promise<T>;
+  };
+  cite: {
+    show: <T = unknown>(factId: string | number) => Promise<T>;
+    search: <T = unknown>(options: CiteSearchOptions) => Promise<T>;
+    rebuild: <T = unknown>() => Promise<T>;
+  };
+  infer: {
+    run: <T = unknown>(conversationId: string | number) => Promise<T>;
+    list: <T = unknown>(options?: { conversationId?: string | number }) => Promise<T>;
+    clear: <T = unknown>(options?: { conversationId?: string | number }) => Promise<T>;
+  };
+  integrations: {
+    list: <T = unknown>() => Promise<T>;
+    remove: <T = unknown>(name: string) => Promise<T>;
+    test: <T = unknown>(name: string) => Promise<T>;
+  };
+  calendar: {
+    list: <T = unknown>() => Promise<T>;
+    events: <T = unknown>(options?: CalendarEventsOptions) => Promise<T>;
+  };
+  mail: {
+    recent: <T = unknown>(options?: { limit?: number }) => Promise<T>;
+    search: <T = unknown>(options: MailSearchOptions) => Promise<T>;
+  };
 };
 
 export function createDataApi(runner: BeeCliRunner): DataApi {
@@ -176,6 +245,121 @@ export function createDataApi(runner: BeeCliRunner): DataApi {
         args.push("--neural");
       }
       return runner.runJson(args);
+    },
+    config: {
+      set: (options) =>
+        runner.runJson(["config", "set", options.key, options.value]),
+      get: (key) => runner.runJson(["config", "get", key]),
+      list: () => runner.runJson(["config", "list", "--json"]),
+      delete: (key) => runner.runJson(["config", "delete", key]),
+    },
+    speakers: {
+      list: () => runner.runJson(["speakers", "list", "--json"]),
+      create: (options) => {
+        const args = ["speakers", "create", "--name", options.name];
+        if (options.notes) {
+          args.push("--notes", options.notes);
+        }
+        return runner.runJson(args);
+      },
+      delete: (id) => runner.runJson(["speakers", "delete", String(id)]),
+      assign: (options) =>
+        runner.runJson([
+          "speakers",
+          "assign",
+          String(options.conversationId),
+          options.speakerLabel,
+          options.profileName,
+        ]),
+      identify: (conversationId) =>
+        runner.runJson([
+          "speakers",
+          "identify",
+          String(conversationId),
+          "--json",
+        ]),
+      learn: (options) => {
+        const args = ["speakers", "learn"];
+        if (options?.profile) {
+          args.push("--profile", options.profile);
+        }
+        if (options?.limit !== undefined) {
+          args.push("--limit", String(options.limit));
+        }
+        return runner.runJson(args);
+      },
+    },
+    cite: {
+      show: (factId) =>
+        runner.runJson(["cite", String(factId), "--json"]),
+      search: (options) => {
+        const args = ["cite", "search", "--query", options.query];
+        if (options.limit !== undefined) {
+          args.push("--limit", String(options.limit));
+        }
+        args.push("--json");
+        return runner.runJson(args);
+      },
+      rebuild: () => runner.runJson(["cite", "rebuild", "--json"]),
+    },
+    infer: {
+      run: (conversationId) =>
+        runner.runJson(["infer", String(conversationId), "--json"]),
+      list: (options) => {
+        const args = ["infer", "list"];
+        if (options?.conversationId !== undefined) {
+          args.push("--conversation", String(options.conversationId));
+        }
+        args.push("--json");
+        return runner.runJson(args);
+      },
+      clear: (options) => {
+        const args = ["infer", "clear"];
+        if (options?.conversationId !== undefined) {
+          args.push("--conversation", String(options.conversationId));
+        }
+        return runner.runJson(args);
+      },
+    },
+    integrations: {
+      list: () => runner.runJson(["integrations", "list", "--json"]),
+      remove: (name) => runner.runJson(["integrations", "remove", name]),
+      test: (name) => runner.runJson(["integrations", "test", name]),
+    },
+    calendar: {
+      list: () => runner.runJson(["calendar", "list", "--json"]),
+      events: (options) => {
+        const args = ["calendar", "events"];
+        if (options?.from) {
+          args.push("--from", options.from);
+        }
+        if (options?.to) {
+          args.push("--to", options.to);
+        }
+        args.push("--json");
+        return runner.runJson(args);
+      },
+    },
+    mail: {
+      recent: (options) => {
+        const args = ["mail", "recent"];
+        if (options?.limit !== undefined) {
+          args.push("--limit", String(options.limit));
+        }
+        args.push("--json");
+        return runner.runJson(args);
+      },
+      search: (options) => {
+        const args = ["mail", "search", "--query", options.query];
+        if (options.provider) {
+          args.push("--provider", options.provider);
+        }
+        if (options.limit !== undefined) {
+          args.push("--limit", String(options.limit));
+        }
+        args.push("--json");
+        return runner.runJson(args);
+      },
     },
   };
 }

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Command, CommandContext } from "@/commands/types";
 import { requestClientJson } from "@/client/clientApi";
+import { resolveSpeakerNames, resolveSpeakerLabel } from "@/db/enrichment";
 
 const USAGE =
   "bee sync [--output <dir>] [--only <facts|todos|daily|conversations>]";
@@ -822,6 +823,7 @@ function formatConversationMarkdown(conversation: ConversationDetail): string {
       if (transcription.utterances.length === 0) {
         lines.push("- (no utterances)", "");
       } else {
+        const speakerNames = resolveSpeakerNames(conversation.id);
         const sortedUtterances = [...transcription.utterances].sort((a, b) => {
           const timeA = a.spoken_at ?? a.start ?? 0;
           const timeB = b.spoken_at ?? b.start ?? 0;
@@ -831,9 +833,8 @@ function formatConversationMarkdown(conversation: ConversationDetail): string {
           return a.id - b.id;
         });
         for (const utterance of sortedUtterances) {
-          lines.push(
-            `- ${utterance.speaker || "unknown"}: ${utterance.text}`
-          );
+          const speaker = resolveSpeakerLabel(speakerNames, utterance.speaker || "unknown");
+          lines.push(`- ${speaker}: ${utterance.text}`);
         }
         lines.push("");
       }

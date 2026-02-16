@@ -7,6 +7,11 @@ import {
   parseOutputFlag,
   resolveTimeZone,
 } from "@/utils/markdown";
+import {
+  resolveSpeakerNames,
+  resolveInferences,
+  resolveSpeakerLabel,
+} from "@/db/enrichment";
 
 const USAGE = [
   "bee conversations list [--limit N] [--cursor <cursor>] [--json]",
@@ -364,6 +369,9 @@ function formatConversationDetailDocument(
   if (!transcription || transcription.utterances.length === 0) {
     lines.push("- (none)");
   } else {
+    const speakerNames = resolveSpeakerNames(conversation.id);
+    const inferences = resolveInferences(conversation.id);
+
     const sortedUtterances = [...transcription.utterances].sort((a, b) => {
       const timeA = a.spoken_at ?? a.start ?? 0;
       const timeB = b.spoken_at ?? b.start ?? 0;
@@ -373,8 +381,12 @@ function formatConversationDetailDocument(
       return a.id - b.id;
     });
     for (const utterance of sortedUtterances) {
-      const speaker = utterance.speaker || "unknown";
-      const text = utterance.text.trim() || "(empty)";
+      const speaker = resolveSpeakerLabel(speakerNames, utterance.speaker || "unknown");
+      let text = utterance.text.trim() || "(empty)";
+      const inferred = inferences.get(utterance.id);
+      if (inferred) {
+        text = `${text} [AI suggested: ${inferred}]`;
+      }
       const timeParts: string[] = [];
       if (utterance.spoken_at !== null) {
         timeParts.push(

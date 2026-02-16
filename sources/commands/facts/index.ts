@@ -7,6 +7,7 @@ import {
   parseOutputFlag,
   resolveTimeZone,
 } from "@/utils/markdown";
+import { resolveFactCitations } from "@/db/enrichment";
 
 const USAGE = [
   "bee facts list [--limit N] [--cursor <cursor>] [--unconfirmed] [--json]",
@@ -498,6 +499,18 @@ function formatFactBlock(
   lines.push(`- confirmed: ${fact.confirmed ? "true" : "false"}`);
   lines.push(`- tags: ${fact.tags.length > 0 ? fact.tags.join(", ") : "(none)"}`);
   lines.push(`- text: ${fact.text.trim() || "(empty)"}`);
+
+  const citations = resolveFactCitations(fact.id);
+  if (citations.length > 0) {
+    lines.push("");
+    lines.push("Sources:");
+    for (const citation of citations) {
+      const score = (citation.relevance_score * 100).toFixed(0);
+      const snippetText = citation.snippet ? ` "${citation.snippet}"` : "";
+      lines.push(`  - Conversation #${citation.conversation_id} (${score}%)${snippetText}`);
+    }
+  }
+
   lines.push("");
   return lines;
 }

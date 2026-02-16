@@ -17,6 +17,13 @@ import { streamCommand } from "@/commands/stream";
 import { syncCommand } from "@/commands/sync";
 import { todosCommand } from "@/commands/todos";
 import { todayCommand } from "@/commands/today";
+import { citeCommand } from "@/commands/cite";
+import { configCommand } from "@/commands/config";
+import { inferCommand } from "@/commands/infer";
+import { speakersCommand } from "@/commands/speakers";
+import { integrationsCommand } from "@/commands/integrations";
+import { calendarCommand } from "@/commands/calendar";
+import { mailCommand } from "@/commands/mail";
 import { versionCommand } from "@/commands/version";
 import type { Environment } from "@/environment";
 
@@ -39,6 +46,13 @@ const commands = [
   syncCommand,
   proxyCommand,
   todosCommand,
+  citeCommand,
+  configCommand,
+  inferCommand,
+  speakersCommand,
+  integrationsCommand,
+  calendarCommand,
+  mailCommand,
   pingCommand,
   versionCommand,
 ] satisfies readonly Command[];

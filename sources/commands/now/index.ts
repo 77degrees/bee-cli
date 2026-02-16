@@ -6,6 +6,7 @@ import {
   parseOutputFlag,
   resolveTimeZone,
 } from "@/utils/markdown";
+import { resolveSpeakerNames, resolveSpeakerLabel } from "@/db/enrichment";
 
 const USAGE = "bee now [--json]";
 const WINDOW_HOURS = 10;
@@ -241,8 +242,9 @@ function formatConversationNow(
   if (utterances.length === 0) {
     lines.push("- (none)", "");
   } else {
+    const speakerNames = resolveSpeakerNames(conversation.id);
     for (const utterance of utterances) {
-      const speaker = utterance.speaker || "unknown";
+      const speaker = resolveSpeakerLabel(speakerNames, utterance.speaker || "unknown");
       const text = utterance.text.trim() || "(empty)";
       lines.push(`- ${speaker}: ${text}`);
     }
