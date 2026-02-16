@@ -146,9 +146,8 @@ button.danger:hover{background:var(--red);color:var(--bg)}
   padding:12px 16px;font-family:var(--font-mono);font-size:.82rem;color:var(--amber-light);
   line-height:1.8;margin:10px 0 12px;overflow-x:auto;white-space:pre}
 
-#login-overlay{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;
-  transition:opacity .4s ease}
-#login-overlay.hidden{opacity:0;pointer-events:none}
+#login-overlay{position:fixed;inset:0;z-index:100;background:var(--bg);display:none;align-items:center;justify-content:center}
+#login-overlay.visible{display:flex}
 .login-box{width:480px;max-width:90vw;text-align:center}
 .login-box .logo{font-family:var(--font-display);font-weight:800;font-size:2.2rem;color:var(--amber);margin-bottom:6px}
 .login-box .logo span{opacity:.5;font-size:.5em;font-weight:400;color:var(--text-sec);letter-spacing:.05em;text-transform:uppercase}
@@ -398,8 +397,35 @@ button.danger:hover{background:var(--red);color:var(--bg)}
   </div>
   <div class="page" id="page-settings">
     <h1>Settings</h1>
-    <p class="subtitle">Configuration for AI providers and integrations</p>
-    <h3>Configuration</h3>
+    <p class="subtitle">Configure your AI provider and view all settings</p>
+
+    <div class="card" style="margin-bottom:24px" id="ai-setup-card">
+      <h3 style="margin-bottom:4px">AI Provider</h3>
+      <p style="font-size:.82rem;color:var(--text-sec);margin-bottom:16px">Required for speaker identification and inference features.</p>
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <button id="ai-pick-openai" class="ghost" style="flex:1;padding:14px;text-align:center">
+          <div style="font-weight:600;color:var(--text)">OpenAI</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">GPT-4o (default)</div>
+        </button>
+        <button id="ai-pick-anthropic" class="ghost" style="flex:1;padding:14px;text-align:center">
+          <div style="font-weight:600;color:var(--text)">Anthropic</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">Claude Sonnet (default)</div>
+        </button>
+      </div>
+      <div id="ai-key-section" style="display:none">
+        <div style="font-size:.82rem;color:var(--text-sec);margin-bottom:8px" id="ai-key-label">API Key</div>
+        <div class="input-row">
+          <input type="password" id="ai-key-input" placeholder="Paste your API key here...">
+          <button id="ai-key-save">Save</button>
+        </div>
+        <div id="ai-key-hint" style="font-size:.75rem;color:var(--text-muted);margin-top:4px"></div>
+        <div id="ai-key-status" style="font-size:.82rem;margin-top:8px;display:none"></div>
+      </div>
+      <div id="ai-current" style="margin-top:12px;font-size:.82rem;color:var(--text-muted)"></div>
+    </div>
+
+    <h3>All Configuration</h3>
+    <p style="font-size:.82rem;color:var(--text-sec);margin-bottom:12px">Advanced: view and edit raw config values.</p>
     <div class="input-row">
       <input type="text" id="config-key" placeholder="Key">
       <input type="text" id="config-value" placeholder="Value">
@@ -754,6 +780,7 @@ async function loadMail() {
 
 // --- Settings ---
 async function loadSettings() {
+  updateAiStatus();
   var body = document.getElementById('config-body');
   setHtml(body, '<tr><td colspan="3"><div class="loading">Loading</div></td></tr>');
   try {
@@ -792,6 +819,76 @@ window.deleteConfig = async function(key) {
   } catch(e) { alert('Error: ' + e.message); }
 };
 
+// --- AI Provider Setup ---
+var selectedProvider = null;
+var aiProviders = {
+  openai: { keyConfig: 'openai_api_key', label: 'OpenAI API Key', hint: 'Get yours at platform.openai.com/api-keys', placeholder: 'sk-...' },
+  anthropic: { keyConfig: 'anthropic_api_key', label: 'Anthropic API Key', hint: 'Get yours at console.anthropic.com/settings/keys', placeholder: 'sk-ant-...' }
+};
+
+function selectProvider(name) {
+  selectedProvider = name;
+  var section = document.getElementById('ai-key-section');
+  var info = aiProviders[name];
+  section.style.display = '';
+  setText(document.getElementById('ai-key-label'), info.label);
+  setText(document.getElementById('ai-key-hint'), info.hint);
+  document.getElementById('ai-key-input').placeholder = info.placeholder;
+  document.getElementById('ai-key-input').value = '';
+  document.getElementById('ai-key-status').style.display = 'none';
+  document.getElementById('ai-pick-openai').style.borderColor = name === 'openai' ? 'var(--amber)' : '';
+  document.getElementById('ai-pick-openai').style.background = name === 'openai' ? 'var(--amber-glow)' : '';
+  document.getElementById('ai-pick-anthropic').style.borderColor = name === 'anthropic' ? 'var(--amber)' : '';
+  document.getElementById('ai-pick-anthropic').style.background = name === 'anthropic' ? 'var(--amber-glow)' : '';
+}
+
+document.getElementById('ai-pick-openai').addEventListener('click', function() { selectProvider('openai'); });
+document.getElementById('ai-pick-anthropic').addEventListener('click', function() { selectProvider('anthropic'); });
+
+document.getElementById('ai-key-save').addEventListener('click', async function() {
+  if (!selectedProvider) return;
+  var key = document.getElementById('ai-key-input').value.trim();
+  if (!key) return;
+  var statusDiv = document.getElementById('ai-key-status');
+  statusDiv.style.display = '';
+  statusDiv.style.color = 'var(--text-muted)';
+  setText(statusDiv, 'Saving...');
+  try {
+    await apiLocal('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key:'ai_provider', value:selectedProvider}) });
+    await apiLocal('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key:aiProviders[selectedProvider].keyConfig, value:key}) });
+    statusDiv.style.color = 'var(--green)';
+    setText(statusDiv, 'Saved! AI provider set to ' + selectedProvider + '.');
+    document.getElementById('ai-key-input').value = '';
+    loadSettings();
+    updateAiStatus();
+  } catch(e) {
+    statusDiv.style.color = 'var(--red)';
+    setText(statusDiv, 'Error: ' + e.message);
+  }
+});
+
+async function updateAiStatus() {
+  var div = document.getElementById('ai-current');
+  try {
+    var entries = await apiLocal('/config');
+    var provider = null;
+    var hasKey = false;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].key === 'ai_provider') provider = entries[i].value;
+      if (entries[i].key === 'openai_api_key' || entries[i].key === 'anthropic_api_key') hasKey = true;
+    }
+    if (provider && hasKey) {
+      setHtml(div, 'Current: <span style="color:var(--green)">' + esc(provider) + ' (configured)</span>');
+    } else if (provider) {
+      setHtml(div, 'Current: <span style="color:var(--amber)">' + esc(provider) + ' (missing API key)</span>');
+    } else {
+      setText(div, 'No AI provider configured yet.');
+    }
+  } catch {
+    setText(div, '');
+  }
+}
+
 // --- Auth ---
 var loginOverlay = document.getElementById('login-overlay');
 var pollTimer = null;
@@ -809,11 +906,11 @@ async function checkAuth() {
 }
 
 function showLogin() {
-  loginOverlay.classList.remove('hidden');
+  loginOverlay.classList.add('visible');
 }
 
 function hideLogin() {
-  loginOverlay.classList.add('hidden');
+  loginOverlay.classList.remove('visible');
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
