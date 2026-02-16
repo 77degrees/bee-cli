@@ -24,6 +24,7 @@ import { speakersCommand } from "@/commands/speakers";
 import { integrationsCommand } from "@/commands/integrations";
 import { calendarCommand } from "@/commands/calendar";
 import { mailCommand } from "@/commands/mail";
+import { uiCommand } from "@/commands/ui";
 import { versionCommand } from "@/commands/version";
 import type { Environment } from "@/environment";
 
@@ -53,6 +54,7 @@ const commands = [
   integrationsCommand,
   calendarCommand,
   mailCommand,
+  uiCommand,
   pingCommand,
   versionCommand,
 ] satisfies readonly Command[];
