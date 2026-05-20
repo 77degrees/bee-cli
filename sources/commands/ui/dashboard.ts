@@ -652,8 +652,8 @@ async function loadOverview() {
   try {
     var results = await Promise.all([
       apiBee('/v1/conversations?limit=5'),
-      apiBee('/v1/facts?confirmed=true&limit=200'),
-      apiBee('/v1/todos?limit=200'),
+      apiBee('/v1/facts?confirmed=true&limit=100'),
+      apiBee('/v1/todos?limit=100'),
     ]);
     var cl = results[0].conversations || [];
     var fl = results[1].facts || [];
@@ -816,7 +816,7 @@ async function loadFacts() {
   var list = document.getElementById('facts-list');
   setHtml(list, '<div class="loading">Loading facts</div>');
   try {
-    var data = await apiBee('/v1/facts?confirmed=true&limit=200');
+    var data = await apiBee('/v1/facts?confirmed=true&limit=100');
     var facts = data.facts || [];
     if (facts.length === 0) { setHtml(list, '<div class="empty">No facts yet</div>'); return; }
     setHtml(list, facts.map(function(f) {
@@ -847,7 +847,7 @@ async function loadTodos() {
   setHtml(openDiv, '<div class="loading">Loading</div>');
   setHtml(doneDiv, '');
   try {
-    var data = await apiBee('/v1/todos?limit=200');
+    var data = await apiBee('/v1/todos?limit=100');
     var todos = data.todos || [];
     var open = todos.filter(function(t) { return !t.completed; });
     var done = todos.filter(function(t) { return t.completed; });

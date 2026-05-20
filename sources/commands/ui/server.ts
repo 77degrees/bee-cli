@@ -7,6 +7,7 @@ import {
   decryptAppPairingToken,
 } from "@/utils/appPairingCrypto";
 import { getDashboardHtml } from "./dashboard";
+import { handlePinRequest, isPinEnabled } from "./pinGate";
 import { tryOpenDatabase, getDatabase } from "@/db/database";
 import {
   listConfig,
@@ -91,6 +92,9 @@ export async function startServer(
       }
 
       try {
+        const pinResponse = await handlePinRequest(req, url);
+        if (pinResponse) return pinResponse;
+
         if (url.pathname === "/" || url.pathname === "/index.html") {
           return new Response(getDashboardHtml(), {
             headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -158,8 +162,10 @@ export async function startServer(
   });
 
   const loggedInText = currentToken ? "(logged in)" : "(not logged in — use dashboard to connect)";
+  const pinText = isPinEnabled() ? "  PIN gate: enabled" : "";
   console.log("");
   console.log(`  Bee Dashboard: http://localhost:${server.port}  ${loggedInText}`);
+  if (pinText) console.log(pinText);
   console.log("");
   console.log("  Press Ctrl+C to stop.");
   console.log("");

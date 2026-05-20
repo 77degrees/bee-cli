@@ -1,0 +1,18 @@
+services:
+  bee-dashboard:
+    build: .
+    container_name: bee-dashboard
+    restart: unless-stopped
+    ports:
+      - "3773:3773"
+    volumes:
+      - bee-data:/data/.bee
+    environment:
+      - BEE_FORCE_FILE_STORE=1
+      - BEE_CONFIG_DIR=/data/.bee
+      - HOME=/data
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      - BEE_PIN=8724
+
+volumes:
+  bee-data:
